@@ -25,6 +25,7 @@ from app.models.employee import Employee
 from app.models.enums import EmployeeStatus, EmploymentType, RiskLevel, UserRole
 from app.repositories import department_repo, employee_repo, user_repo
 from app.services.workflows.definition_loader import load_all_definitions
+from app.services.workflows.service import start_workflow
 
 DEMO_PASSWORD = "MeridianDemo123!"
 
@@ -254,6 +255,41 @@ def link_users_to_employees(db: Session) -> None:
     print(f"Linked {linked} user(s) to their employee record.")
 
 
+def seed_demo_workflow_instance(db: Session) -> None:
+    """Starts one real onboarding WorkflowInstance for the demo "new hire"
+    (Jordan Lee) so Phase 6's engine is visible in the database the moment
+    `docker compose up` finishes — a demoable artifact without needing a
+    route or UI yet. Safe to call on every startup: start_workflow's own
+    dedup_key check (keyed on this employee's id) means re-running this
+    never creates a second instance for the same demo employee.
+
+    Left paused mid-workflow on purpose (stops at manager_approval) rather
+    than auto-approving through to completion — that pause *is* the point:
+    it's what proves the engine can actually wait on a human, not just run
+    a script front to back. Phase 7's approval inbox is what will resolve
+    it for real.
+    """
+    employee = employee_repo.get_by_work_email(db, "jordan.lee@cordant.io")
+    hr_user = user_repo.get_by_email(db, "priya.anand@cordant.io")
+    if employee is None or hr_user is None:
+        print("Skipping demo workflow instance: Jordan Lee / Priya Anand not found yet.")
+        return
+
+    instance = start_workflow(
+        db,
+        workflow_key="employee_onboarding",
+        input_data={"employee_id": str(employee.id)},
+        dedup_key=f"employee_onboarding:{employee.id}",
+        initiated_by_user_id=hr_user.id,
+        employee_id=employee.id,
+    )
+    print(
+        f"Demo workflow instance: employee_onboarding for {employee.first_name} "
+        f"{employee.last_name} is '{instance.status.value}' "
+        f"(current step: {instance.current_step_key})."
+    )
+
+
 def run_all_seeds() -> None:
     db = SessionLocal()
     try:
@@ -277,6 +313,12 @@ def run_all_seeds() -> None:
             f"Workflow definitions: {counts['created']} created/updated, "
             f"{counts['unchanged']} already up to date."
         )
+    finally:
+        db.close()
+
+    db = SessionLocal()
+    try:
+        seed_demo_workflow_instance(db)
     finally:
         db.close()
 

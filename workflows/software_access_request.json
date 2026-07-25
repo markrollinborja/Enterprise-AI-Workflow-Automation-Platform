@@ -8,7 +8,8 @@
   "input_schema": {
     "employee_id": "required",
     "application_id": "required",
-    "justification": "required"
+    "justification": "required",
+    "application_risk_level": "required"
   },
   "steps": [
     {
@@ -28,7 +29,7 @@
       "key": "summarize_justification",
       "name": "AI summarizes justification",
       "type": "ai_action",
-      "condition": "application.risk_level != 'low'",
+      "condition": "input.application_risk_level != 'low'",
       "requires_review": false,
       "failure_behavior": "continue"
     },
@@ -36,7 +37,7 @@
       "key": "it_approval",
       "name": "IT / application owner approves",
       "type": "approval",
-      "condition": "application.risk_level in ['medium', 'high']",
+      "condition": "input.application_risk_level in ['medium', 'high']",
       "approval": { "approver_role": "it", "sequence_order": 2 },
       "failure_behavior": "fail_workflow"
     },
@@ -44,7 +45,7 @@
       "key": "security_approval",
       "name": "Security approves high-risk request",
       "type": "approval",
-      "condition": "application.risk_level == 'high'",
+      "condition": "input.application_risk_level == 'high'",
       "approval": { "approver_role": "security", "sequence_order": 3 },
       "failure_behavior": "fail_workflow"
     },

@@ -59,11 +59,37 @@ services:
     depends_on:
       - backend
 
+  worker:
+    # Same image as backend — it's the same codebase calling the same
+    # service-layer functions, just on a poll loop instead of behind a
+    # route (see docs/architecture/background-jobs.md, ADR-0002). No
+    # separate Dockerfile needed.
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
+    # The sleep is a pragmatic wait for backend's migrations+seed to finish
+    # (depends_on only waits for the container to *start*, not for that
+    # command to complete) — not bulletproof against a slow first boot,
+    # acceptable for local demo scale. A production version would use a
+    # real readiness check instead of a fixed delay.
+    command: sh -c "sleep 5 && python -m app.workers.runner"
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    volumes:
+      - ./backend/app:/app/app
+
 volumes:
   pgdata:
 
-# worker (Phase 6) and mcp_server (Phase 10) services are added here once
-# their code exists — see docs/architecture/system-architecture.md for the
-# full intended 5-service topology. Keeping compose scoped to what actually
-# runs today is deliberate: `docker compose up` should never point at a
-# Dockerfile that doesn't exist yet.
+# mcp_server (Phase 10) is added here once its code exists — see
+# docs/architecture/system-architecture.md for the full intended 5-service
+# topology. Keeping compose scoped to what actually runs today is
+# deliberate: `docker compose up` should never point at a Dockerfile that
+# doesn't exist yet.

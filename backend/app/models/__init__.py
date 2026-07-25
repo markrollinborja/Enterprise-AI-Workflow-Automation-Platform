@@ -12,7 +12,12 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.user import User
-from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowStepInstance
+from app.models.workflow import (
+    WorkflowDefinition,
+    WorkflowEvent,
+    WorkflowInstance,
+    WorkflowStepInstance,
+)
 
 __all__ = [
     "Department",
@@ -28,6 +33,7 @@ __all__ = [
     "User",
     "UserRole",
     "WorkflowDefinition",
+    "WorkflowEvent",
     "WorkflowInstance",
     "WorkflowStepInstance",
 ]

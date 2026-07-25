@@ -21,3 +21,9 @@ Worker polls every 2-5 seconds (configurable). For a system where "time to next 
 ## What this doesn't handle (and doesn't need to for V1)
 
 Horizontal worker scaling beyond one replica isn't needed at demo scale, but the row-locking approach above means adding a second worker replica later wouldn't require a redesign — worth knowing the answer to "how would this scale" without having built it.
+
+## Update (Phase 6): built, with one deliberate simplification
+
+`app/workers/runner.py` is real — a Docker Compose service polling every 3 seconds via `workflow_instance_repo.list_ready_to_advance()`, calling `services/workflows/service.py::advance_workflow()` on each result. That function is also called synchronously right after `start_workflow` and `resume_workflow_step` — so a demo doesn't wait on a poll tick for steps that resolve immediately; the worker's real job is picking up retry-scheduled steps once their backoff has elapsed.
+
+**Simplification taken:** no `SELECT ... FOR UPDATE SKIP LOCKED` yet — `list_ready_to_advance` is a plain read. At one worker replica this is correct (nothing else could be claiming the same row concurrently); it's deferred to Phase 13 (Reliability) rather than built speculatively now, since it has no test that could prove it matters without a second replica to race against. Flagged here explicitly rather than silently skipped, since ADR-0002 called it out as "cheap to write regardless."

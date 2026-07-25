@@ -1,12 +1,11 @@
-"""Workflow definition, instance, and step-instance models.
+"""Workflow definition, instance, step-instance, and event models.
 
-Deliberately three tables, not more: WorkflowDefinition is the versioned
-template (loaded from workflows/*.json — see ADR-0003), WorkflowInstance is
-one running/completed process, WorkflowStepInstance is one row per step per
-instance. No relational step-definition table (ADR-0003), no separate
-IntegrationExecution/IdempotencyKey tables (data-model.md's cuts still
-apply) — this phase only adds what Phase 5 needs, execution wiring is
-Phase 6.
+WorkflowDefinition is the versioned template (loaded from workflows/*.json
+— see ADR-0003), WorkflowInstance is one running/completed process,
+WorkflowStepInstance is one row per step per instance, WorkflowEvent is the
+raw trigger record and idempotency boundary (Phase 6). No relational
+step-definition table (ADR-0003), no separate IntegrationExecution/
+IdempotencyKey tables (data-model.md's cuts still apply).
 """
 
 import uuid
@@ -154,3 +153,32 @@ class WorkflowStepInstance(Base):
     )
 
     workflow_instance: Mapped["WorkflowInstance"] = relationship(back_populates="step_instances")
+
+
+class WorkflowEvent(Base):
+    """The raw external trigger record — and the idempotency boundary.
+
+    `dedup_key` (e.g. `employee_onboarding:{employee_id}`) has a unique DB
+    constraint. If the same trigger arrives twice (a duplicate webhook
+    retry, a double form submission), the second `start_workflow` call
+    finds this row by `dedup_key` and returns the already-running instance
+    instead of creating a second one. This is what data-model.md's cut of a
+    separate IdempotencyKey table refers to — the event that starts a
+    workflow *is* the idempotency check, not a second table for the same
+    concept. See docs/architecture/workflow-state-model.md.
+    """
+
+    __tablename__ = "workflow_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    event_type: Mapped[str] = mapped_column(String(150), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    workflow_instance_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("workflow_instances.id"), nullable=True
+    )
+
+    workflow_instance: Mapped["WorkflowInstance | None"] = relationship()

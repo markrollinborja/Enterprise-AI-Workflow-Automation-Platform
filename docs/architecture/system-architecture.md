@@ -116,6 +116,10 @@ enterprise-ai-workflow-automation-platform/
 └── README.md
 ```
 
+## Build status
+
+Backend, frontend, employee directory, and the workflow definition/state-model data layer are built (Phases 2-5). The worker process is real as of Phase 6 — `app/workers/runner.py`, its own Compose service. The MCP server process (`mcp_server/`) is not built yet (Phase 10); until then, `ai_action`/`mcp_tool` steps run through stub executors in `app/services/workflows/executors.py` rather than the real OpenAI/MCP calls this diagram shows.
+
 ## What's explicitly deferred
 
 No hosting/deployment (see [ADR-0007](../decisions/0007-no-hosting-in-v1.md)). No Redis/Celery/Temporal. No microservice split of workflow/approval/rules — they're separate service modules in one process, not separate deployables. Revisit only if a real scale or team-ownership reason shows up.

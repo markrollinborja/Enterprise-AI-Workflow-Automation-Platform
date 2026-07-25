@@ -19,14 +19,16 @@ Calls: `repositories/department_repo`, `repositories/employee_repo`. No audit-lo
 
 Module: `app/services/workflows/` (plural — matches `employees`/`departments`, the resource-collection naming convention already used elsewhere in this codebase, rather than `auth`'s singular concept-service naming).
 
-Two pieces exist as of Phase 5, both deliberately DB-free and side-effect-free beyond the object/row passed in — no orchestration logic lives here yet:
+- `state_machine.py` (Phase 5) — `transition_instance()` / `transition_step()`, the only functions allowed to write `WorkflowInstance.status` / `WorkflowStepInstance.status`. Unit-tested transition-by-transition in `tests/test_state_machine.py`.
+- `definition_loader.py` (Phase 5) — reads `workflows/*.json`, validates each against `WorkflowDefinitionSchema`, and upserts into `WorkflowDefinition`. Called from `seed.py`, not from any request path.
+- `conditions.py` (Phase 6) — evaluates a step's `condition` string against workflow/step context using a whitelisted `ast`-based parser (no `eval()`/`exec()` — see the module docstring and `tests/test_conditions.py`'s explicit "malicious expression" tests). A leaf module: no DB access, no calls out.
+- `executors.py` (Phase 6) — stub implementations of `ai_action`/`mcp_tool` step execution, standing in for the AI service (Phase 9) and MCP client (Phase 10). Both stubs read test hooks (`force_failure_steps`, `ai_requires_review`) from the workflow's own `input_data`, which is what let the retry/backoff/pause path get built and tested before either real integration exists. Phase 9/10 replace only what's inside these two functions.
+- `service.py` (Phase 6) — the engine itself: `start_workflow`, `advance_workflow`, `resume_workflow_step`. Owns starting instances, executing steps in definition order, evaluating conditions to skip steps, dispatching by step type, applying each step's configured `failure_behavior` (retry/fail_workflow/continue), and pausing/resuming for human approval. Built entirely on `state_machine.py`'s transition functions — never writes `.status` directly.
 
-- `state_machine.py` — `transition_instance()` / `transition_step()`, the only functions allowed to write `WorkflowInstance.status` / `WorkflowStepInstance.status`. Implements the transition tables from [workflow-state-model.md](./workflow-state-model.md) exactly; unit-tested transition-by-transition in `tests/test_state_machine.py`.
-- `definition_loader.py` — reads `workflows/*.json`, validates each against `WorkflowDefinitionSchema` (`app/schemas/workflow_definition.py`), and upserts into `WorkflowDefinition`. Called from `seed.py`, not from any request path.
+Does not: decide *who* needs to approve (that's a Phase 7 rules-engine/`ApprovalRequest` concern the engine will delegate to once it exists — Phase 6's `resume_workflow_step` is deliberately generic, taking a bare `decision`, and gets called directly in tests standing in for Phase 7's real approval routes), call a real OpenAI/MCP endpoint (Phase 9/10 own the *content* of `execute_ai_action_stub`/`execute_mcp_tool_stub`, not `service.py`), or write audit rows (Phase 13).
+Calls: `repositories/workflow_definition_repo`, `workflow_instance_repo`, `workflow_step_repo`, `workflow_event_repo`.
 
-Phase 6 adds `service.py` to this same module: starting instances, executing steps in order, pausing/resuming, marking complete/failed/cancelled — built on top of `state_machine.py` rather than duplicating transition logic inline.
-Does not (Phase 6 scope): know how to evaluate a business rule, call OpenAI, or call an MCP tool — it will delegate to `rules`, `ai`, and `integrations` for those, and only orchestrate the sequence and state.
-Calls (Phase 6 scope): `rules`, `approvals`, `ai`, `integrations`, `notifications`, `audit`.
+**Worker.** `app/workers/runner.py` polls `list_ready_to_advance()` every few seconds and calls `advance_workflow` on each result — the same function `start_workflow`/`resume_workflow_step` call inline. One execution path, two callers (see ADR-0002 and [background-jobs.md](./background-jobs.md)).
 
 ## approvals
 

@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401,E402
     Employee,
     User,
     WorkflowDefinition,
+    WorkflowEvent,
     WorkflowInstance,
     WorkflowStepInstance,
 )
