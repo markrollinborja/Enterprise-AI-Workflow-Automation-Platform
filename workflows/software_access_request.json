@@ -1,0 +1,68 @@
+{
+  "workflow_key": "software_access_request",
+  "name": "Software Access Request",
+  "description": "An employee requests access to an internal application. Approval chain length scales with the application's risk level; an AI summarizes the justification for non-trivial requests; IT fulfills the request via MCP once approved.",
+  "trigger_type": "manual",
+  "trigger_event": null,
+  "version": 1,
+  "input_schema": {
+    "employee_id": "required",
+    "application_id": "required",
+    "justification": "required"
+  },
+  "steps": [
+    {
+      "key": "validate_request",
+      "name": "Validate access request",
+      "type": "validation",
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "manager_approval",
+      "name": "Manager approves request",
+      "type": "approval",
+      "approval": { "approver_role": "manager", "sequence_order": 1 },
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "summarize_justification",
+      "name": "AI summarizes justification",
+      "type": "ai_action",
+      "condition": "application.risk_level != 'low'",
+      "requires_review": false,
+      "failure_behavior": "continue"
+    },
+    {
+      "key": "it_approval",
+      "name": "IT / application owner approves",
+      "type": "approval",
+      "condition": "application.risk_level in ['medium', 'high']",
+      "approval": { "approver_role": "it", "sequence_order": 2 },
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "security_approval",
+      "name": "Security approves high-risk request",
+      "type": "approval",
+      "condition": "application.risk_level == 'high'",
+      "approval": { "approver_role": "security", "sequence_order": 3 },
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "create_fulfillment_task",
+      "name": "Create IT fulfillment task",
+      "type": "mcp_tool",
+      "mcp_tool": "create_jira_access_request_task",
+      "failure_behavior": "retry",
+      "max_attempts": 3
+    },
+    {
+      "key": "notify_employee",
+      "name": "Notify employee of outcome",
+      "type": "mcp_tool",
+      "mcp_tool": "send_slack_notification",
+      "failure_behavior": "continue"
+    }
+  ],
+  "completion_criteria": "all_steps_completed"
+}

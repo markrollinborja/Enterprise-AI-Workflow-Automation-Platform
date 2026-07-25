@@ -8,7 +8,14 @@ from app.db.base import Base
 
 # Import models here as they're added so Alembic can autogenerate migrations
 # against them.
-from app.models import Department, Employee, User  # noqa: F401,E402
+from app.models import (  # noqa: F401,E402
+    Department,
+    Employee,
+    User,
+    WorkflowDefinition,
+    WorkflowInstance,
+    WorkflowStepInstance,
+)
 
 config = context.config
 settings = get_settings()

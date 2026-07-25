@@ -8,6 +8,7 @@ from app.main import app
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.user import User
+from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowStepInstance
 
 
 @pytest.fixture
@@ -26,16 +27,21 @@ def db_session():
     self-referential manager_id both need clearing before the rows they
     point at can be deleted, or Postgres rejects the delete on an FK
     violation — nulling both out first sidesteps having to compute a safe
-    delete order by hand.
+    delete order by hand. Workflow instances/steps are deleted before
+    users/employees for the same reason (WorkflowInstance FKs to both);
+    workflow_definitions has no such dependency so it can go last.
     """
     session: Session = SessionLocal()
     try:
         yield session
     finally:
+        session.execute(delete(WorkflowStepInstance))
+        session.execute(delete(WorkflowInstance))
         session.execute(update(User).values(employee_id=None))
         session.execute(delete(User))
         session.execute(update(Employee).values(manager_id=None))
         session.execute(delete(Employee))
         session.execute(delete(Department))
+        session.execute(delete(WorkflowDefinition))
         session.commit()
         session.close()

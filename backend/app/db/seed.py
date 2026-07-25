@@ -24,6 +24,7 @@ from app.models.department import Department
 from app.models.employee import Employee
 from app.models.enums import EmployeeStatus, EmploymentType, RiskLevel, UserRole
 from app.repositories import department_repo, employee_repo, user_repo
+from app.services.workflows.definition_loader import load_all_definitions
 
 DEMO_PASSWORD = "MeridianDemo123!"
 
@@ -266,6 +267,16 @@ def run_all_seeds() -> None:
     db = SessionLocal()
     try:
         link_users_to_employees(db)
+    finally:
+        db.close()
+
+    db = SessionLocal()
+    try:
+        counts = load_all_definitions(db)
+        print(
+            f"Workflow definitions: {counts['created']} created/updated, "
+            f"{counts['unchanged']} already up to date."
+        )
     finally:
         db.close()
 

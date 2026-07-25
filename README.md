@@ -2,20 +2,21 @@
 
 Enterprise Employee Workflow Automation Platform — a reusable workflow orchestration system that automates internal employee processes (onboarding, software access requests) through configurable workflows, human approval chains, business rules, AI-assisted recommendations, and MCP-powered integrations, with complete auditability.
 
-**Status:** Version 1 in active development. This README documents what's built so far (Phase 4 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
+**Status:** Version 1 in active development. This README documents what's built so far (Phase 5 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
 
 ## What's here right now
 
 - FastAPI backend skeleton with structured config, logging, and `/health` + `/health/ready` endpoints
 - Local JWT auth: login, `/auth/me`, six roles (employee, manager, hr, it, security, administrator), server-side role enforcement (`/users` is administrator-only)
 - Employee directory: `Employee` + `Department` models (self-referential manager relationship), `/employees` and `/departments` APIs (read for any authenticated user, write restricted to HR/Administrator), a React table view in the dashboard
+- Workflow definitions and state model: `WorkflowDefinition` / `WorkflowInstance` / `WorkflowStepInstance` models, a validated JSON schema for workflow definitions (`app/schemas/workflow_definition.py`), the two V1 workflow templates (`workflows/employee_onboarding.json`, `workflows/software_access_request.json`), an enforced state machine for both instance and step transitions (`app/services/workflows/state_machine.py`), and a loader that validates and seeds those JSON files into the DB — no execution yet, that's Phase 6
 - React + TypeScript + Vite + Tailwind CSS frontend with a working login flow and employee directory table
-- Postgres via Docker Compose, with Alembic migrations (`users`, then `departments` + `employees`)
+- Postgres via Docker Compose, with Alembic migrations (`users`, then `departments` + `employees`, then `workflow_definitions` / `workflow_instances` / `workflow_step_instances`)
 - Nine demo employees / six demo user logins auto-seeded on `docker compose up`, at a fictional company (Cordant Industries) — see `backend/app/db/seed.py`
-- Linting (Ruff + MyPy for backend, ESLint for frontend) and a pytest suite covering auth (login, token validation, role-based access) and the employee directory (CRUD validation, department/manager-not-found errors, work-email conflicts)
+- Linting (Ruff + MyPy for backend, ESLint for frontend) and a pytest suite covering auth, the employee directory, the workflow state machine (every allowed transition plus a sample of disallowed ones), and the workflow definition loader/schema
 - GitHub Actions CI running migrations + lint + tests on every push
 
-Workflow engine, approvals, business rules, AI service, and MCP server are not built yet — those are Phases 5-10. This is intentionally a thin, runnable base to build on.
+Workflow execution engine, approvals, business rules, AI service, and MCP server are not built yet — those are Phases 6-10. This is intentionally a thin, runnable base to build on.
 
 ## Demo users
 
@@ -86,7 +87,7 @@ npm run build
 backend/        FastAPI app (routes, services, repositories, models — see docs/architecture/service-boundaries.md)
 mcp_server/      MCP server exposing Jira/Slack/Calendar/employee-lookup tools (Phase 10)
 frontend/        React + TypeScript + Vite + Tailwind dashboard
-workflows/       Versioned JSON workflow definitions (Phase 5)
+workflows/       Versioned JSON workflow definitions (employee_onboarding, software_access_request)
 docs/
   architecture/  System design docs — read these first
   decisions/     ADRs — the "why" behind every major choice

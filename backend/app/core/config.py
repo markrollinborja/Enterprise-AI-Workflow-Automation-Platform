@@ -1,6 +1,15 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Local-dev default: resolves to <repo_root>/workflows when running the
+# backend directly (venv, no Docker) — backend/app/core/config.py's
+# parents[3] is the repo root. Docker Compose overrides this via the
+# WORKFLOWS_DIR env var to /app/workflows, matching where the ./workflows
+# volume gets mounted (see docker-compose.yml) — the container has no
+# repo-root sibling structure for a parents[]-based path to find.
+_DEFAULT_WORKFLOWS_DIR = str(Path(__file__).resolve().parents[3] / "workflows")
 
 
 class Settings(BaseSettings):
@@ -20,6 +29,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+psycopg://meridian:meridian@localhost:5432/meridian_flow"
+
+    # Workflow definitions — see app/services/workflows/definition_loader.py
+    workflows_dir: str = _DEFAULT_WORKFLOWS_DIR
 
     # Auth — see docs/architecture/authentication.md
     jwt_secret_key: str = "change-me-in-env"

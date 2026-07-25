@@ -59,13 +59,13 @@ erDiagram
 
 **Application** — `id, name, risk_level, owner_role, description`. Seeded reference data, drives access-request risk rules.
 
-**WorkflowDefinition** — `id, key, name, version, trigger_type, definition_json, is_active, created_at`. `employee_onboarding` and `software_access_request` each get one row (loaded from the JSON files in `workflows/` at startup/seed time).
+**WorkflowDefinition** — `id, key, name, version, trigger_type, trigger_event, definition_json, is_active, created_at`. *(Built in Phase 5.)* `employee_onboarding` and `software_access_request` each get one row (loaded from `workflows/*.json` at seed time by `services/workflows/definition_loader.py`, validated against `WorkflowDefinitionSchema`). `key` is not unique alone — `(key, version)` identifies a specific revision; only one row per `key` should be `is_active=True`, enforced by the loader.
 
-**WorkflowEvent** — `id, event_type, payload (JSON), dedup_key (unique), received_at, workflow_instance_id (FK, nullable)`. The raw trigger record. `dedup_key` (e.g. `employee_created:{employee_id}`) is what prevents the same HR submission from spawning two onboarding instances — see [ADR-0002](../decisions/0002-db-backed-workflow-engine.md).
+**WorkflowEvent** — deferred, not built in Phase 5. The idempotency/dedup concept it was meant to carry is real and still planned, but there's no consumer yet — nothing triggers a workflow instance until Phase 6's `start_workflow`. Added alongside that, not speculatively ahead of it.
 
-**WorkflowInstance** — `id, workflow_definition_id (FK), status, input_data (JSON), initiated_by_user_id (FK), employee_id (FK, nullable), current_step_key, started_at, updated_at, completed_at`. One row per running/completed onboarding or access request. See [workflow-state-model.md](./workflow-state-model.md) for `status` values.
+**WorkflowInstance** — `id, workflow_definition_id (FK), status, input_data (JSON), initiated_by_user_id (FK, nullable), employee_id (FK, nullable), current_step_key, started_at, updated_at, completed_at`. *(Built in Phase 5 — no rows get created until Phase 6's engine exists to create them.)* One row per running/completed onboarding or access request. See [workflow-state-model.md](./workflow-state-model.md) for `status` values and the enforced transition table (`services/workflows/state_machine.py`).
 
-**WorkflowStepInstance** — `id, workflow_instance_id (FK), step_key, step_type, status, input_data, output_data, attempt_count, scheduled_at, started_at, completed_at, error_message`. One row per step per instance, in execution order.
+**WorkflowStepInstance** — `id, workflow_instance_id (FK), step_key, step_type, status, input_data, output_data, attempt_count, scheduled_at, started_at, completed_at, error_message, created_at`. *(Built in Phase 5, same caveat as WorkflowInstance.)* One row per step per instance, in execution order.
 
 **ApprovalRequest** — `id, workflow_instance_id (FK), step_instance_id (FK), approver_role, assigned_user_id (FK, nullable), status, sequence_order, due_at (nullable), created_at`. `sequence_order` is what makes an approval chain sequential (manager, then IT, then security) rather than a free-for-all.
 

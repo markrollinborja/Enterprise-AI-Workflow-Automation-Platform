@@ -15,11 +15,18 @@ Owns: CRUD-ish reads and writes on the org directory — listing/creating/updati
 Does not: know anything about workflows, approvals, or access packages. An `Employee` row can exist with zero workflow instances ever touching it — onboarding is a *process that references* an employee, not something the employee record depends on.
 Calls: `repositories/department_repo`, `repositories/employee_repo`. No audit-log or notification calls yet — those get wired in once a workflow (Phase 5+) actually mutates an employee's state as a side effect; a plain HR-entered directory edit isn't itself a workflow event.
 
-## workflow
+## workflows
 
-Owns: starting instances, executing steps in order, pausing/resuming, validating state transitions, marking complete/failed/cancelled.
-Does not: know how to evaluate a business rule, call OpenAI, or call an MCP tool — it delegates to `rules`, `ai`, and `integrations` for those, and only orchestrates the sequence and state.
-Calls: `rules`, `approvals`, `ai`, `integrations`, `notifications`, `audit`.
+Module: `app/services/workflows/` (plural — matches `employees`/`departments`, the resource-collection naming convention already used elsewhere in this codebase, rather than `auth`'s singular concept-service naming).
+
+Two pieces exist as of Phase 5, both deliberately DB-free and side-effect-free beyond the object/row passed in — no orchestration logic lives here yet:
+
+- `state_machine.py` — `transition_instance()` / `transition_step()`, the only functions allowed to write `WorkflowInstance.status` / `WorkflowStepInstance.status`. Implements the transition tables from [workflow-state-model.md](./workflow-state-model.md) exactly; unit-tested transition-by-transition in `tests/test_state_machine.py`.
+- `definition_loader.py` — reads `workflows/*.json`, validates each against `WorkflowDefinitionSchema` (`app/schemas/workflow_definition.py`), and upserts into `WorkflowDefinition`. Called from `seed.py`, not from any request path.
+
+Phase 6 adds `service.py` to this same module: starting instances, executing steps in order, pausing/resuming, marking complete/failed/cancelled — built on top of `state_machine.py` rather than duplicating transition logic inline.
+Does not (Phase 6 scope): know how to evaluate a business rule, call OpenAI, or call an MCP tool — it will delegate to `rules`, `ai`, and `integrations` for those, and only orchestrate the sequence and state.
+Calls (Phase 6 scope): `rules`, `approvals`, `ai`, `integrations`, `notifications`, `audit`.
 
 ## approvals
 

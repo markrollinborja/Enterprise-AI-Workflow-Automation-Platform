@@ -103,4 +103,4 @@ def transition(instance: WorkflowInstance, target: InstanceStatus) -> None:
     instance.status = target
 ```
 
-This is what Phase 6 (workflow execution engine) implements and Phase 14 unit-tests transition-by-transition, including the negative cases (asserting the disallowed transitions actually raise).
+**Update (Phase 5):** this is now real code — `app/services/workflows/state_machine.py`, with `INSTANCE_TRANSITIONS`/`STEP_TRANSITIONS` tables matching the diagrams above exactly, and `tests/test_state_machine.py` covering every allowed transition plus a representative sample of disallowed ones (moved earlier than originally planned, since the tables and their tests have zero dependency on the engine that will call them). Phase 6 doesn't implement this — it *calls* `transition_instance()`/`transition_step()` as the engine advances instances and steps, the same way Phase 4's services call `NotFoundError`/`ConflictError` rather than re-deriving HTTP error handling per route.

@@ -24,6 +24,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
+      WORKFLOWS_DIR: /app/workflows
     command: >
       sh -c "alembic upgrade head &&
              python -m app.db.seed &&
@@ -44,6 +45,10 @@ services:
       - ./backend/tests:/app/tests
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./backend/requirements-dev.txt:/app/requirements-dev.txt
+      # workflows/*.json lives at the repo root (ADR-0003 — checked in
+      # outside backend/ so it reads like config, not application code).
+      # Read-only: the backend loads these, never writes them.
+      - ./workflows:/app/workflows:ro
 
   frontend:
     build:

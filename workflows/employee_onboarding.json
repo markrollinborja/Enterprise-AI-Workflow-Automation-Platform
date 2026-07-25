@@ -1,0 +1,65 @@
+{
+  "workflow_key": "employee_onboarding",
+  "name": "Employee Onboarding",
+  "description": "Onboards a newly hired employee: manager approval, an AI-recommended access package, an IT review of that recommendation, MCP-driven task creation and orientation scheduling, and a Slack notification.",
+  "trigger_type": "event",
+  "trigger_event": "employee.created",
+  "version": 1,
+  "input_schema": {
+    "employee_id": "required"
+  },
+  "steps": [
+    {
+      "key": "validate_employee",
+      "name": "Validate employee record",
+      "type": "validation",
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "manager_approval",
+      "name": "Manager approves onboarding",
+      "type": "approval",
+      "approval": { "approver_role": "manager", "sequence_order": 1 },
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "recommend_access",
+      "name": "AI recommends access package",
+      "type": "ai_action",
+      "requires_review": true,
+      "failure_behavior": "continue"
+    },
+    {
+      "key": "it_review_access",
+      "name": "IT reviews the recommended access package",
+      "type": "approval",
+      "condition": "recommend_access.requires_human_review == true",
+      "approval": { "approver_role": "it", "sequence_order": 2 },
+      "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "create_it_tasks",
+      "name": "Create Jira onboarding tasks",
+      "type": "mcp_tool",
+      "mcp_tool": "create_jira_onboarding_task",
+      "failure_behavior": "retry",
+      "max_attempts": 3
+    },
+    {
+      "key": "schedule_orientation",
+      "name": "Schedule orientation",
+      "type": "mcp_tool",
+      "mcp_tool": "schedule_calendar_event",
+      "failure_behavior": "retry",
+      "max_attempts": 3
+    },
+    {
+      "key": "notify_slack",
+      "name": "Notify onboarding channel",
+      "type": "mcp_tool",
+      "mcp_tool": "send_slack_notification",
+      "failure_behavior": "continue"
+    }
+  ],
+  "completion_criteria": "all_steps_completed"
+}

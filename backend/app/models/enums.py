@@ -49,3 +49,65 @@ class RiskLevel(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class TriggerType(str, enum.Enum):
+    """How a workflow instance gets started. EVENT = the engine reacts to a
+    domain event (e.g. `employee.created`) with no human choosing to start
+    it. MANUAL = a user explicitly initiates it (e.g. an employee submitting
+    a software access request via a form)."""
+
+    EVENT = "event"
+    MANUAL = "manual"
+
+
+class InstanceStatus(str, enum.Enum):
+    """See docs/architecture/workflow-state-model.md for the full transition
+    diagram. COMPLETED, FAILED, REJECTED, CANCELLED are terminal — enforced
+    in services/workflow/state_machine.py, not left to callers to remember."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    WAITING_EXTERNAL = "waiting_external"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class StepStatus(str, enum.Enum):
+    """Per-step counterpart to InstanceStatus — see the second diagram in
+    docs/architecture/workflow-state-model.md. A step's FAILED is terminal
+    for that step, but whether the *workflow* fails, continues, or retries
+    is a per-step `failure_behavior` decision read from definition_json, not
+    encoded here."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    REJECTED = "rejected"
+
+
+class StepType(str, enum.Enum):
+    """What kind of action a step performs. Deliberately no separate
+    "conditional" type — any step can carry an optional `condition` in its
+    definition (see app/schemas/workflow_definition.py); a condition that
+    evaluates false skips that step regardless of its type."""
+
+    VALIDATION = "validation"
+    APPROVAL = "approval"
+    AI_ACTION = "ai_action"
+    MCP_TOOL = "mcp_tool"
+
+
+class FailureBehavior(str, enum.Enum):
+    """Lives inside definition_json per step, not as a DB column — it's
+    configuration the engine reads, never a state a row is "in"."""
+
+    RETRY = "retry"
+    FAIL_WORKFLOW = "fail_workflow"
+    CONTINUE = "continue"
