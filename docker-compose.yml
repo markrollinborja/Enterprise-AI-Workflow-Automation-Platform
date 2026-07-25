@@ -24,6 +24,10 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.db.seed &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
     depends_on:
@@ -32,6 +36,14 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
+      # Not needed for the app to run — mounted so `docker compose run
+      # backend pytest` etc. works for local dev without a separate Python
+      # install. The Dockerfile deliberately excludes these from the actual
+      # image (no reason to ship tests/dev-tooling config in a runtime
+      # container), so they only exist here via this mount.
+      - ./backend/tests:/app/tests
+      - ./backend/pyproject.toml:/app/pyproject.toml
+      - ./backend/requirements-dev.txt:/app/requirements-dev.txt
 
   frontend:
     build:

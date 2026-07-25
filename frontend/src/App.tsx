@@ -1,16 +1,9 @@
-import { useEffect, useState } from 'react'
-import { fetchHealth } from './api/client'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { LoginForm } from './components/LoginForm'
 
-type ConnectionStatus = 'checking' | 'connected' | 'error'
-
-function App() {
-  const [status, setStatus] = useState<ConnectionStatus>('checking')
-
-  useEffect(() => {
-    fetchHealth()
-      .then(() => setStatus('connected'))
-      .catch(() => setStatus('error'))
-  }, [])
+function AuthenticatedView() {
+  const { user, logout } = useAuth()
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -20,24 +13,41 @@ function App() {
           Enterprise Employee Workflow Automation Platform
         </p>
 
-        <div className="mt-6 flex items-center gap-2 rounded-md border border-slate-200 p-3">
-          <span
-            className={`h-2.5 w-2.5 rounded-full ${
-              status === 'connected'
-                ? 'bg-emerald-500'
-                : status === 'error'
-                  ? 'bg-red-500'
-                  : 'bg-amber-400'
-            }`}
-          />
-          <span className="text-sm text-slate-700">
-            {status === 'checking' && 'Checking backend connection…'}
-            {status === 'connected' && 'Backend connected'}
-            {status === 'error' && 'Backend unreachable — is the API running?'}
-          </span>
+        <div className="mt-6 rounded-md border border-slate-200 p-4">
+          <p className="text-sm text-slate-700">
+            Signed in as <span className="font-medium">{user.full_name}</span>
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            {user.email} · role: {user.role}
+          </p>
         </div>
+
+        <button
+          onClick={logout}
+          className="mt-4 w-full rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+        >
+          Sign out
+        </button>
       </div>
     </div>
+  )
+}
+
+function AppShell() {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-slate-50" />
+  }
+
+  return user ? <AuthenticatedView /> : <LoginForm />
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }
 

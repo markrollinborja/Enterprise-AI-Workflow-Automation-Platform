@@ -2,6 +2,12 @@
 
 Each module in `backend/app/services/` owns one concern. Rule: a service may call other services and repositories; a route may only call services, never repositories directly; a repository may only touch the DB, never call a service.
 
+## auth
+
+*(Added in Phase 3 — not in the original Phase 1 service list.)* Owns: verifying credentials, issuing JWTs. `services/auth/service.py` deliberately returns the same error for "no such email" and "wrong password" (`InvalidCredentialsError`) so a caller can't enumerate valid emails through the login endpoint's response.
+Does not: decide *authorization* (what a role can do) — that's `app/api/deps.py`'s `require_role`, which sits at the API layer since it's about gating routes, not a business decision a service makes.
+Calls: `repositories/user_repo`.
+
 ## workflow
 
 Owns: starting instances, executing steps in order, pausing/resuming, validating state transitions, marking complete/failed/cancelled.

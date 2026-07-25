@@ -6,9 +6,11 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import get_settings
 from app.db.base import Base
 
-# Import models here as they're added (Phase 4+) so Alembic can autogenerate
-# migrations against them, e.g.:
-#   from app.models import employee, department, user  # noqa: F401
+# Import models here as they're added so Alembic can autogenerate migrations
+# against them.
+from app.models import User  # noqa: F401,E402
+
+# Phase 4+ adds: from app.models import employee, department  # noqa: F401
 
 config = context.config
 settings = get_settings()

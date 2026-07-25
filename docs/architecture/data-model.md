@@ -49,7 +49,7 @@ erDiagram
 
 ## Tables
 
-**User** — `id, email, hashed_password, role, employee_id (FK, nullable), is_active, created_at`. Auth identity. `employee_id` links a login to a directory record (an Employee doesn't need a User account to be onboarded — HR creates the Employee row before the person ever logs in).
+**User** — `id, email, hashed_password, full_name, role, is_active, created_at, updated_at`. Auth identity, built in Phase 3. `employee_id` (FK, nullable) is added in a Phase 4 migration once the `Employee` table exists — Phase 3 deliberately doesn't forward-declare a FK to a table that doesn't exist yet. Once added, it'll link a login to a directory record (an Employee doesn't need a User account to be onboarded — HR creates the Employee row before the person ever logs in). `full_name` was added during Phase 3 build-out — not in the original Phase 1 sketch, but needed the moment there's a UI showing "signed in as ___."
 
 **Department** — `id, name`.
 

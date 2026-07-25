@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.api.routes import health
+from app.api.routes import auth, health, users
 from app.core.config import get_settings
+from app.core.exceptions import AppError
 from app.core.logging import configure_logging
 
 configure_logging()
@@ -20,7 +22,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    """Single translation point from domain errors to HTTP responses — see
+    app.core.exceptions for why services raise AppError, not HTTPException."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"type": type(exc).__name__, "message": exc.message}},
+    )
+
+
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(users.router)
 
 
 @app.get("/")

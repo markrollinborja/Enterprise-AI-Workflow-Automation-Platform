@@ -51,6 +51,9 @@ jobs:
       - name: Type check (mypy)
         run: mypy app
 
+      - name: Apply database migrations
+        run: alembic upgrade head
+
       - name: Test (pytest)
         run: pytest -v
 
