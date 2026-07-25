@@ -51,9 +51,9 @@ erDiagram
 
 **User** — `id, email, hashed_password, full_name, role, is_active, created_at, updated_at`. Auth identity, built in Phase 3. `employee_id` (FK, nullable) is added in a Phase 4 migration once the `Employee` table exists — Phase 3 deliberately doesn't forward-declare a FK to a table that doesn't exist yet. Once added, it'll link a login to a directory record (an Employee doesn't need a User account to be onboarded — HR creates the Employee row before the person ever logs in). `full_name` was added during Phase 3 build-out — not in the original Phase 1 sketch, but needed the moment there's a UI showing "signed in as ___."
 
-**Department** — `id, name`.
+**Department** — `id, name`. *(Built in Phase 4.)*
 
-**Employee** — `id, first_name, last_name, work_email, personal_email (nullable), job_title, department_id (FK), manager_id (FK, self-referential, nullable), employment_type, start_date, status, location, risk_level, access_package_id (FK, nullable), created_at, updated_at`.
+**Employee** — `id, first_name, last_name, work_email, personal_email (nullable), job_title, department_id (FK), manager_id (FK, self-referential, nullable), employment_type, start_date, status, location, risk_level, created_at, updated_at`. *(Built in Phase 4.)* `access_package_id` is listed in the ERD above but deliberately **not** a real column yet — `AccessPackage` doesn't exist until Phase 9, and Phase 3 already established the pattern of not forward-declaring a FK to a table that doesn't exist (`User.employee_id` waited for `Employee` the same way). It'll be added in the Phase 9 migration alongside the table itself.
 
 **AccessPackage** — `id, name, department_id (FK, nullable), risk_level, included_systems (JSON), description, created_at`. Seeded reference data.
 

@@ -8,9 +8,7 @@ from app.db.base import Base
 
 # Import models here as they're added so Alembic can autogenerate migrations
 # against them.
-from app.models import User  # noqa: F401,E402
-
-# Phase 4+ adds: from app.models import employee, department  # noqa: F401
+from app.models import Department, Employee, User  # noqa: F401,E402
 
 config = context.config
 settings = get_settings()

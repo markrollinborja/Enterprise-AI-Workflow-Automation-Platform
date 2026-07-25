@@ -8,6 +8,7 @@ const TOKEN_STORAGE_KEY = 'meridian_flow_token'
 
 interface AuthContextValue {
   user: CurrentUser | null
+  token: string | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => void
@@ -17,16 +18,20 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
-    if (!token) {
+    const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY)
+    if (!storedToken) {
       setIsLoading(false)
       return
     }
-    fetchCurrentUser(token)
-      .then(setUser)
+    fetchCurrentUser(storedToken)
+      .then((currentUser) => {
+        setUser(currentUser)
+        setToken(storedToken)
+      })
       .catch(() => localStorage.removeItem(TOKEN_STORAGE_KEY))
       .finally(() => setIsLoading(false))
   }, [])
@@ -36,15 +41,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_STORAGE_KEY, accessToken)
     const currentUser = await fetchCurrentUser(accessToken)
     setUser(currentUser)
+    setToken(accessToken)
   }
 
   function logout() {
     localStorage.removeItem(TOKEN_STORAGE_KEY)
     setUser(null)
+    setToken(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

@@ -2,19 +2,20 @@
 
 Enterprise Employee Workflow Automation Platform — a reusable workflow orchestration system that automates internal employee processes (onboarding, software access requests) through configurable workflows, human approval chains, business rules, AI-assisted recommendations, and MCP-powered integrations, with complete auditability.
 
-**Status:** Version 1 in active development. This README documents what's built so far (Phase 3 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
+**Status:** Version 1 in active development. This README documents what's built so far (Phase 4 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
 
 ## What's here right now
 
 - FastAPI backend skeleton with structured config, logging, and `/health` + `/health/ready` endpoints
 - Local JWT auth: login, `/auth/me`, six roles (employee, manager, hr, it, security, administrator), server-side role enforcement (`/users` is administrator-only)
-- React + TypeScript + Vite + Tailwind CSS frontend with a working login flow
-- Postgres via Docker Compose, with Alembic migrations (first one: the `users` table)
-- Six demo users auto-seeded on `docker compose up`, at a fictional company (Cordant Industries) — see `backend/app/db/seed.py`
-- Linting (Ruff + MyPy for backend, ESLint for frontend) and a pytest suite covering login success/failure, token validation, and role-based access
+- Employee directory: `Employee` + `Department` models (self-referential manager relationship), `/employees` and `/departments` APIs (read for any authenticated user, write restricted to HR/Administrator), a React table view in the dashboard
+- React + TypeScript + Vite + Tailwind CSS frontend with a working login flow and employee directory table
+- Postgres via Docker Compose, with Alembic migrations (`users`, then `departments` + `employees`)
+- Nine demo employees / six demo user logins auto-seeded on `docker compose up`, at a fictional company (Cordant Industries) — see `backend/app/db/seed.py`
+- Linting (Ruff + MyPy for backend, ESLint for frontend) and a pytest suite covering auth (login, token validation, role-based access) and the employee directory (CRUD validation, department/manager-not-found errors, work-email conflicts)
 - GitHub Actions CI running migrations + lint + tests on every push
 
-Workflow engine, employee directory, approvals, business rules, AI service, and MCP server are not built yet — those are Phases 4-10. This is intentionally a thin, runnable base to build on.
+Workflow engine, approvals, business rules, AI service, and MCP server are not built yet — those are Phases 5-10. This is intentionally a thin, runnable base to build on.
 
 ## Demo users
 

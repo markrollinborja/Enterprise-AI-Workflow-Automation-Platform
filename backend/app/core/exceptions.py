@@ -31,3 +31,7 @@ class PermissionDeniedError(AppError):
 
 class NotFoundError(AppError):
     status_code = 404
+
+
+class ConflictError(AppError):
+    status_code = 409

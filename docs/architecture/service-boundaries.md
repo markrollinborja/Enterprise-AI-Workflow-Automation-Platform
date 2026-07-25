@@ -8,6 +8,13 @@ Each module in `backend/app/services/` owns one concern. Rule: a service may cal
 Does not: decide *authorization* (what a role can do) — that's `app/api/deps.py`'s `require_role`, which sits at the API layer since it's about gating routes, not a business decision a service makes.
 Calls: `repositories/user_repo`.
 
+## employees / departments
+
+*(Added in Phase 4 — not in the original Phase 1 service list, same reasoning as `auth` in Phase 3: the spec's service list covers the workflow engine and its supporting concerns, but the directory that the workflow engine operates *on* needs its own thin layer first.)*
+Owns: CRUD-ish reads and writes on the org directory — listing/creating/updating employees and departments, validating department/manager references exist, enforcing `work_email` uniqueness, and mapping ORM rows to API responses (including the derived `department_name`/`manager_name` fields so the frontend never resolves a UUID itself).
+Does not: know anything about workflows, approvals, or access packages. An `Employee` row can exist with zero workflow instances ever touching it — onboarding is a *process that references* an employee, not something the employee record depends on.
+Calls: `repositories/department_repo`, `repositories/employee_repo`. No audit-log or notification calls yet — those get wired in once a workflow (Phase 5+) actually mutates an employee's state as a side effect; a plain HR-entered directory edit isn't itself a workflow event.
+
 ## workflow
 
 Owns: starting instances, executing steps in order, pausing/resuming, validating state transitions, marking complete/failed/cancelled.
