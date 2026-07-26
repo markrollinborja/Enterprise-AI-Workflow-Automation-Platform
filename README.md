@@ -4,6 +4,18 @@ Enterprise Employee Workflow Automation Platform — a reusable workflow orchest
 
 **Status:** Version 1 in active development. This README documents what's built so far (Phase 6 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
 
+## Workflow diagrams
+
+Both V1 workflows, generated directly from the workflow JSON definitions and the execution engine — not hand-drawn, so they can't drift out of sync with the code. Editable Mermaid source is in [docs/workflows/flow-diagrams.md](docs/workflows/flow-diagrams.md).
+
+**Employee Onboarding**
+
+![Employee onboarding workflow diagram](diagrams/employee-onboarding-flow.png)
+
+**Software Access Request**
+
+![Software access request workflow diagram](diagrams/software-access-request-flow.png)
+
 ## What's here right now
 
 - FastAPI backend skeleton with structured config, logging, and `/health` + `/health/ready` endpoints
@@ -89,9 +101,11 @@ backend/        FastAPI app (routes, services, repositories, models — see docs
 mcp_server/      MCP server exposing Jira/Slack/Calendar/employee-lookup tools (Phase 10)
 frontend/        React + TypeScript + Vite + Tailwind dashboard
 workflows/       Versioned JSON workflow definitions (employee_onboarding, software_access_request)
+diagrams/        Exported PNGs of the workflow flow diagrams (source: docs/workflows/flow-diagrams.md)
 docs/
   architecture/  System design docs — read these first
   decisions/     ADRs — the "why" behind every major choice
+  workflows/     Workflow flow diagrams (Mermaid source + generation prompt)
 docker-compose.yml
 .env.example
 ```
