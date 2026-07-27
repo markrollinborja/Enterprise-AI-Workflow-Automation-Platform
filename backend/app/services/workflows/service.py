@@ -35,7 +35,7 @@ from app.schemas.workflow_definition import StepDefinition, WorkflowDefinitionSc
 from app.services.workflows.conditions import build_condition_context, evaluate_condition
 from app.services.workflows.executors import (
     StepExecutionResult,
-    execute_ai_action_stub,
+    execute_ai_action,
     execute_mcp_tool_stub,
 )
 from app.services.workflows.state_machine import transition_instance, transition_step
@@ -191,7 +191,7 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
             _create_approval_request(db, instance, step_row, step_def)
             return instance
 
-        result = _execute(step_def, step_row, definition, instance, context)
+        result = _execute(db, step_def, step_row, definition, instance, context)
         _apply_step_result(db, instance, step_row, step_def, result)
 
         if step_row.status == StepStatus.COMPLETED:
@@ -270,6 +270,7 @@ def _resolve_approver(
 
 
 def _execute(
+    db: Session,
     step_def: StepDefinition,
     step_row: WorkflowStepInstance,
     definition: WorkflowDefinitionSchema,
@@ -279,7 +280,7 @@ def _execute(
     if step_def.type == StepType.VALIDATION:
         return _execute_validation(definition, instance)
     if step_def.type == StepType.AI_ACTION:
-        return execute_ai_action_stub(step_def, context)
+        return execute_ai_action(db, step_def, step_row, instance, context)
     if step_def.type == StepType.MCP_TOOL:
         return execute_mcp_tool_stub(step_def, step_row, context)
     raise ValueError(f"unhandled step type in _execute: {step_def.type}")
@@ -316,6 +317,18 @@ def _apply_step_result(
         return
 
     step_row.error_message = result.error_message
+    if result.output_data is not None:
+        # A failed step can still carry safe fallback output — e.g. the AI
+        # service defaulting requires_human_review=True when it couldn't
+        # produce a real recommendation (no API key, network error, bad
+        # response). Without this, a downstream step whose condition reads
+        # this step's output (recommend_access.requires_human_review) would
+        # raise ConditionEvaluationError over a step that simply never
+        # completed, instead of safely routing to a human. Every other
+        # failure path never populates output_data, so this is a no-op for
+        # them — only services/ai/service.py's graceful-fallback path uses
+        # it today.
+        step_row.output_data = result.output_data
     if (
         step_def.failure_behavior == FailureBehavior.RETRY
         and step_row.attempt_count < step_def.max_attempts

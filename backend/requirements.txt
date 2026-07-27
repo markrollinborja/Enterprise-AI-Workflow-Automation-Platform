@@ -10,3 +10,7 @@ python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
 python-multipart==0.0.20
 httpx==0.28.1
+# Verified via web search at write-time (July 2026) that client.chat.completions.parse()
+# is the current stable structured-outputs interface this project's AI service uses
+# (see app/services/ai/service.py) — not the older client.beta.chat.completions.parse().
+openai==2.48.0

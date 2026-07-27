@@ -9,6 +9,9 @@ from app.db.base import Base
 # Import models here as they're added so Alembic can autogenerate migrations
 # against them.
 from app.models import (  # noqa: F401,E402
+    AccessPackage,
+    AIExecution,
+    Application,
     ApprovalDecision,
     ApprovalRequest,
     Department,

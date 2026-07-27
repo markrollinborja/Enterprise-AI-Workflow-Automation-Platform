@@ -31,6 +31,7 @@
       "key": "summarize_justification",
       "name": "AI summarizes justification",
       "type": "ai_action",
+      "ai_task": "summarize_justification",
       "condition": "input.application_risk_level != 'low'",
       "requires_review": false,
       "failure_behavior": "continue"

@@ -23,7 +23,13 @@ from app.db.session import SessionLocal
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.enums import EmployeeStatus, EmploymentType, RiskLevel, UserRole
-from app.repositories import application_repo, department_repo, employee_repo, user_repo
+from app.repositories import (
+    access_package_repo,
+    application_repo,
+    department_repo,
+    employee_repo,
+    user_repo,
+)
 from app.services.rules.service import classify_request_risk, should_auto_approve
 from app.services.workflows.definition_loader import load_all_definitions
 from app.services.workflows.service import start_workflow
@@ -210,6 +216,86 @@ APPLICATIONS: list[dict] = [
 ]
 
 
+# The catalog recommend_access_package picks from (see
+# services/ai/service.py) — never free text, never invented. Spans risk
+# levels and departments so the AI has a genuine choice to make, not one
+# obviously-correct row every time.
+ACCESS_PACKAGES: list[dict] = [
+    {
+        "name": "Engineering - Standard",
+        "department": "Engineering",
+        "risk_level": RiskLevel.LOW,
+        "included_systems": ["GitHub", "Slack", "AWS Console (dev)"],
+        "description": "Baseline access for individual-contributor engineers.",
+    },
+    {
+        "name": "Engineering - Elevated",
+        "department": "Engineering",
+        "risk_level": RiskLevel.MEDIUM,
+        "included_systems": ["GitHub (admin)", "AWS Console (prod)", "CI/CD"],
+        "description": "For engineers who own production infrastructure or CI/CD pipelines.",
+    },
+    {
+        "name": "IT - Standard",
+        "department": "Information Technology",
+        "risk_level": RiskLevel.LOW,
+        "included_systems": ["Slack", "Zoom", "Confluence"],
+        "description": "Baseline access for IT support staff.",
+    },
+    {
+        "name": "IT - Elevated",
+        "department": "Information Technology",
+        "risk_level": RiskLevel.HIGH,
+        "included_systems": ["AWS Console", "Slack Admin Console", "Okta Admin"],
+        "description": "For IT administrators who manage infrastructure and identity systems.",
+    },
+    {
+        "name": "HR - Standard",
+        "department": "Human Resources",
+        "risk_level": RiskLevel.LOW,
+        "included_systems": ["Slack", "Confluence"],
+        "description": "Baseline access for HR coordinators.",
+    },
+    {
+        "name": "Finance - Standard",
+        "department": "Finance",
+        "risk_level": RiskLevel.MEDIUM,
+        "included_systems": ["NetSuite Finance", "Salesforce"],
+        "description": "Baseline access for finance team members.",
+    },
+    {
+        "name": "Security - Standard",
+        "department": "Security",
+        "risk_level": RiskLevel.HIGH,
+        "included_systems": ["AWS Console", "Okta Admin", "Slack Admin Console"],
+        "description": "For security analysts who need broad visibility across systems.",
+    },
+    {
+        "name": "Operations - Standard",
+        "department": "Operations",
+        "risk_level": RiskLevel.LOW,
+        "included_systems": ["Slack", "Zoom", "Confluence"],
+        "description": "Baseline access for operations staff.",
+    },
+]
+
+
+def seed_access_packages(db: Session, departments: dict[str, Department]) -> None:
+    created = 0
+    for data in ACCESS_PACKAGES:
+        if access_package_repo.get_by_name(db, data["name"]) is None:
+            access_package_repo.create(
+                db,
+                name=data["name"],
+                department_id=departments[data["department"]].id,
+                risk_level=data["risk_level"],
+                included_systems=data["included_systems"],
+                description=data["description"],
+            )
+            created += 1
+    print(f"Access packages: {created} created, {len(ACCESS_PACKAGES) - created} already existed.")
+
+
 def seed_departments(db: Session) -> dict[str, Department]:
     result: dict[str, Department] = {}
     created = 0
@@ -322,6 +408,12 @@ def seed_demo_workflow_instance(db: Session) -> None:
     it's what proves the engine can actually wait on a human, not just run
     a script front to back. Phase 7's approval inbox is what will resolve
     it for real.
+
+    Since Phase 9, approving past manager_approval triggers a real AI call
+    (recommend_access) — with no OPENAI_API_KEY configured, that call fails
+    gracefully (see services/ai/service.py) and still safely pauses at
+    it_review_access, just via the fallback path instead of a real
+    recommendation. Both are legitimate things to demo.
     """
     employee = employee_repo.get_by_work_email(db, "jordan.lee@cordant.io")
     hr_user = user_repo.get_by_email(db, "priya.anand@cordant.io")
@@ -398,6 +490,7 @@ def run_all_seeds() -> None:
         departments = seed_departments(db)
         seed_employees(db, departments)
         seed_applications(db)
+        seed_access_packages(db, departments)
     finally:
         db.close()
 

@@ -123,3 +123,24 @@ class ApprovalRequestStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class AITaskType(str, enum.Enum):
+    """The value of a StepDefinition's `ai_task` field (see
+    app/schemas/workflow_definition.py) — names which structured task
+    services/ai/service.py should run for a given ai_action step. Matches
+    the workflows/*.json string exactly; also the `task_type` column on
+    AIExecution."""
+
+    RECOMMEND_ACCESS_PACKAGE = "recommend_access_package"
+    SUMMARIZE_JUSTIFICATION = "summarize_justification"
+
+
+class AIExecutionStatus(str, enum.Enum):
+    """Whether a single AIExecution audit row represents a successful OpenAI
+    call (structured output parsed and validated) or a failure (missing API
+    key, network/timeout, or a response that didn't validate) — see
+    services/ai/service.py's graceful-fallback path."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"

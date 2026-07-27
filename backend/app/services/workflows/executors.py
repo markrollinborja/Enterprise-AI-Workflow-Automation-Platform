@@ -1,32 +1,34 @@
-"""Stub executors for the two step types this project can't actually
-perform yet: `ai_action` (needs the AI service, Phase 9) and `mcp_tool`
-(needs the MCP server, Phase 10). Both are a deliberate seam — Phase 9/10
-replace the *inside* of these two functions with a real OpenAI call and a
-real MCP client call respectively. Nothing else changes: the engine
-(`service.py`) doesn't know or care whether a step's result came from a
-stub or the real integration, and the retry/backoff/waiting_external
-machinery is exercised identically either way.
+"""execute_ai_action calls the real AI service (Phase 9, services/ai) —
+what used to be execute_ai_action_stub. execute_mcp_tool_stub is still a
+stub: the real MCP server doesn't exist until Phase 10. Both are the
+deliberate seam this module has always been: the engine (`service.py`)
+doesn't know or care whether a step's result came from a stub or a real
+integration, and the retry/backoff/waiting_external machinery is exercised
+identically either way.
 
-Both stubs read a test hook from the workflow instance's own input_data
-rather than needing a separate "test mode" concept — this is the
-`force_failure` hook integration-strategy.md already calls for, just built
-one phase earlier than the real integration it will eventually apply to:
+execute_mcp_tool_stub still reads a test hook from the workflow instance's
+own input_data — the `force_failure` hook integration-strategy.md calls
+for, built one phase earlier than the real integration it applies to:
 
 - `force_failure_steps`: list[str] of step_keys that should report a
   simulated failure (once, or every time — see execute_mcp_tool_stub).
-  This is what lets Phase 6 build and test the entire retry-and-recover
+  This is what let Phase 6 build and test the entire retry-and-recover
   demo scenario before a real Jira/Slack/Calendar call exists to fail.
-- `ai_requires_review`: bool, defaults to True. Controls what the AI
-  stub's `requires_human_review` output is — defaulting to True (rather
-  than False) is a deliberate safe default: an unimplemented AI step
-  should never cause a downstream human-review gate to silently skip.
+
+The equivalent `ai_requires_review` hook execute_ai_action_stub used to
+read is gone — a real ai_action step's requires_human_review now comes
+from the AI service's actual (or mocked, in tests) confidence score, not
+an input flag. See services/ai/service.py and tests/test_ai_service.py.
 """
 
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.models.workflow import WorkflowStepInstance
+from sqlalchemy.orm import Session
+
+from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 from app.schemas.workflow_definition import StepDefinition
+from app.services.ai import service as ai_service
 
 
 @dataclass
@@ -36,22 +38,32 @@ class StepExecutionResult:
     error_message: str | None = None
 
 
-def execute_ai_action_stub(
-    step_def: StepDefinition, context: dict[str, Any]
+def execute_ai_action(
+    db: Session,
+    step_def: StepDefinition,
+    step_row: WorkflowStepInstance,
+    instance: WorkflowInstance,
+    context: dict[str, Any],
 ) -> StepExecutionResult:
-    """Real version (Phase 9): build a prompt, call OpenAI, validate the
-    response against a Pydantic schema, compute a genuine confidence score.
-    Until then: always succeeds with placeholder output clearly marked as
-    a stub, so a workflow that reaches an ai_action step can still
-    complete end to end today."""
-    requires_review = bool(context["input"].get("ai_requires_review", True))
+    """Thin dispatcher: looks up which structured task this step names
+    (`ai_task`, required for every ai_action step — see
+    schemas/workflow_definition.py's validator) and translates
+    services/ai/service.py's AIActionResult into this module's
+    StepExecutionResult. All the actual AI logic — prompting, calling
+    OpenAI, confidence thresholds, the AIExecution audit row — lives in
+    services/ai, not here; see that module's docstring for why."""
+    if not step_def.ai_task:
+        raise ValueError(f"ai_action step '{step_def.key}' is missing 'ai_task'")
+    result = ai_service.execute_ai_task(
+        db,
+        ai_task=step_def.ai_task,
+        step_row=step_row,
+        instance=instance,
+        context=context,
+        requires_review_enabled=step_def.requires_review,
+    )
     return StepExecutionResult(
-        status="completed",
-        output_data={
-            "stub": True,
-            "note": "AI service not implemented until Phase 9",
-            "requires_human_review": requires_review,
-        },
+        status=result.status, output_data=result.output_data, error_message=result.error_message
     )
 
 

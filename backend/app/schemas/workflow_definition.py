@@ -36,10 +36,18 @@ class StepDefinition(BaseModel):
     # docs/decisions for why arbitrary code execution is a non-goal.
     condition: str | None = None
     approval: ApprovalStepConfig | None = None
-    # ai_action only: if True, a low-confidence or flagged AI result must be
-    # reviewed by a human before the workflow proceeds (Principle 3,
-    # human-in-the-loop). Meaningless on non-ai_action steps.
+    # ai_action only: whether this step's result can require human review at
+    # all. When True, services/ai/service.py computes a real
+    # requires_human_review flag from the model's self-reported confidence
+    # score (below threshold -> True); when False, the task never gates on
+    # confidence and requires_human_review is always False, regardless of
+    # what the model reports. Meaningless on non-ai_action steps. (This
+    # field existed since Phase 6 but the stub executor never actually read
+    # it — Phase 9 is what wires it up for real.)
     requires_review: bool = False
+    # ai_action only: which structured task services/ai/service.py should
+    # run for this step (e.g. "recommend_access_package"). See AITaskType.
+    ai_task: str | None = None
     # mcp_tool only: the tool name the engine calls (see
     # docs/architecture/mcp-architecture.md for the registered tool names).
     mcp_tool: str | None = None
@@ -51,6 +59,8 @@ class StepDefinition(BaseModel):
     def _require_type_specific_fields(self) -> "StepDefinition":
         if self.type == StepType.APPROVAL and self.approval is None:
             raise ValueError(f"step '{self.key}': type=approval requires an 'approval' config")
+        if self.type == StepType.AI_ACTION and not self.ai_task:
+            raise ValueError(f"step '{self.key}': type=ai_action requires 'ai_task'")
         if self.type == StepType.MCP_TOOL and not self.mcp_tool:
             raise ValueError(f"step '{self.key}': type=mcp_tool requires 'mcp_tool'")
         if self.failure_behavior == FailureBehavior.RETRY and self.max_attempts <= 1:

@@ -1,7 +1,12 @@
+from app.models.access_package import AccessPackage
+from app.models.ai_execution import AIExecution
+from app.models.application import Application
 from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.enums import (
+    AIExecutionStatus,
+    AITaskType,
     ApprovalRequestStatus,
     EmployeeStatus,
     EmploymentType,
@@ -22,6 +27,11 @@ from app.models.workflow import (
 )
 
 __all__ = [
+    "AIExecution",
+    "AIExecutionStatus",
+    "AITaskType",
+    "AccessPackage",
+    "Application",
     "ApprovalDecision",
     "ApprovalRequest",
     "ApprovalRequestStatus",

@@ -26,6 +26,7 @@
       "key": "recommend_access",
       "name": "AI recommends access package",
       "type": "ai_action",
+      "ai_task": "recommend_access_package",
       "requires_review": true,
       "failure_behavior": "continue"
     },
