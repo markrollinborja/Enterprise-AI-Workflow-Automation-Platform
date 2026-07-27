@@ -67,9 +67,9 @@ erDiagram
 
 **WorkflowStepInstance** — `id, workflow_instance_id (FK), step_key, step_type, status, input_data, output_data, attempt_count, scheduled_at, started_at, completed_at, error_message, created_at`. *(Built in Phase 5; populated for real starting Phase 6.)* One row per step per instance, in execution order.
 
-**ApprovalRequest** — `id, workflow_instance_id (FK), step_instance_id (FK), approver_role, assigned_user_id (FK, nullable), status, sequence_order, due_at (nullable), created_at`. `sequence_order` is what makes an approval chain sequential (manager, then IT, then security) rather than a free-for-all.
+**ApprovalRequest** — `id, workflow_instance_id (FK), step_instance_id (FK), approver_role, assigned_user_id (FK, nullable), status, sequence_order, due_at (nullable), created_at`. *(Built in Phase 7.)* `sequence_order` is display-only in V1 (e.g. "step 2 of 3") — the actual sequencing is already enforced by the engine only ever pausing on one approval step at a time, so this column doesn't do any gatekeeping itself. `assigned_user_id` is set for `manager_approval` (resolved to the specific employee's actual manager, not any user with role=manager) and left null for IT/Security approvals, which are a role-based pool instead — see `services/workflows/service.py::_resolve_approver`.
 
-**ApprovalDecision** — `id, approval_request_id (FK), decided_by_user_id (FK), decision, notes, decided_at`.
+**ApprovalDecision** — `id, approval_request_id (FK), decided_by_user_id (FK), decision, notes, decided_at`. *(Built in Phase 7.)* Reuses the same `approval_request_status` enum as `ApprovalRequest.status` for the `decision` column (never stores `pending`) — one Postgres enum type, not two, since the values are identical.
 
 **Task** — `id, workflow_instance_id (FK), step_instance_id (FK, nullable), task_type, assigned_role, status, description, created_at, completed_at`. Internal checklist items (e.g. "IT: provision laptop") that aren't necessarily backed by an external MCP call.
 

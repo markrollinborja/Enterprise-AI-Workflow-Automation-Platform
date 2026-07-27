@@ -28,7 +28,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
-    database_url: str = "postgresql+psycopg://meridian:meridian@localhost:5432/meridian_flow"
+    # Host port 5433 (not 5432) — matches docker-compose.yml's db service
+    # mapping, chosen to avoid colliding with any other Postgres already
+    # running on the host machine. This default only matters when no .env
+    # is present at all (e.g. running the backend outside Docker without
+    # having created one yet) — see .env.example for the value actually
+    # meant to be used.
+    database_url: str = "postgresql+psycopg://meridian:meridian@localhost:5433/meridian_flow"
 
     # Workflow definitions — see app/services/workflows/definition_loader.py
     workflows_dir: str = _DEFAULT_WORKFLOWS_DIR

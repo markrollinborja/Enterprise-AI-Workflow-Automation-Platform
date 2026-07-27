@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.main import app
+from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.user import User
@@ -32,15 +33,17 @@ def db_session():
     self-referential manager_id both need clearing before the rows they
     point at can be deleted, or Postgres rejects the delete on an FK
     violation — nulling both out first sidesteps having to compute a safe
-    delete order by hand. WorkflowEvent (FKs to workflow_instances) is
-    deleted first, then step/instance rows (which FK to employees/users),
-    before employees/users themselves; workflow_definitions has no such
-    dependency so it can go last.
+    delete order by hand. ApprovalDecision and ApprovalRequest (FK to
+    workflow/step instances and users) go first, then WorkflowEvent, then
+    step/instance rows, before employees/users themselves;
+    workflow_definitions has no such dependency so it can go last.
     """
     session: Session = SessionLocal()
     try:
         yield session
     finally:
+        session.execute(delete(ApprovalDecision))
+        session.execute(delete(ApprovalRequest))
         session.execute(delete(WorkflowEvent))
         session.execute(delete(WorkflowStepInstance))
         session.execute(delete(WorkflowInstance))

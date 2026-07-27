@@ -12,7 +12,7 @@ exercise it for real.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
@@ -132,13 +132,13 @@ def test_mcp_tool_failure_retries_then_recovers(db_session: Session) -> None:
     assert failing_step.status == StepStatus.PENDING
     assert failing_step.attempt_count == 1
     assert failing_step.scheduled_at is not None
-    assert failing_step.scheduled_at > datetime.now(timezone.utc)
+    assert failing_step.scheduled_at > datetime.now(UTC)
     assert "Simulated failure" in failing_step.error_message
 
     # Simulate both "the retry is now due" and "the transient failure is
     # gone" without sleeping out the real backoff in the test suite.
     instance.input_data = {**instance.input_data, "force_failure_steps": []}
-    failing_step.scheduled_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    failing_step.scheduled_at = datetime.now(UTC) - timedelta(seconds=1)
     db_session.add(instance)
     db_session.add(failing_step)
     db_session.commit()
@@ -170,7 +170,7 @@ def test_mcp_tool_retries_exhausted_fails_the_workflow(db_session: Session) -> N
     # the first attempt already happened above) without waiting on backoff.
     for _ in range(2):
         step = _step(instance, "create_it_tasks")
-        step.scheduled_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        step.scheduled_at = datetime.now(UTC) - timedelta(seconds=1)
         db_session.add(step)
         db_session.commit()
         instance = advance_workflow(db_session, instance)
@@ -277,7 +277,7 @@ def test_worker_poll_advances_a_due_retry(db_session: Session) -> None:
 
     instance.input_data = {**instance.input_data, "force_failure_steps": []}
     step = _step(instance, "create_it_tasks")
-    step.scheduled_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    step.scheduled_at = datetime.now(UTC) - timedelta(seconds=1)
     db_session.add(instance)
     db_session.add(step)
     db_session.commit()

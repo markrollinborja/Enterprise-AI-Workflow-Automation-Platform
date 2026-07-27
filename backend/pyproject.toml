@@ -4,6 +4,13 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# B008 (function call in argument default) fires on every FastAPI route that
+# uses `param: X = Depends(...)` — that's not a bug, it's the framework's
+# documented dependency-injection pattern (FastAPI special-cases Depends()
+# defaults; they're evaluated per-request, not once at import time like a
+# real mutable-default bug would be). Ignoring it here rather than sprinkling
+# `# noqa: B008` across every route function.
+ignore = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"

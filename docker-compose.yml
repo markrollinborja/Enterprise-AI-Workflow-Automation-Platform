@@ -6,8 +6,18 @@ services:
       POSTGRES_USER: meridian
       POSTGRES_PASSWORD: meridian
       POSTGRES_DB: meridian_flow
+    # Host port 5433, not 5432 — deliberately avoiding the default Postgres
+    # port on the host. Containers still talk to each other over the internal
+    # Docker network on port 5432 (DATABASE_URL below uses "db:5432"), so this
+    # only affects connections made *from Windows itself* — e.g. pytest run
+    # from a local venv, or psql run directly from a host terminal. If your
+    # machine has any other Postgres already listening on 5432 (a native
+    # install, another project's container, etc.), this prevents the two from
+    # colliding — whichever one grabbed 5432 first would otherwise silently
+    # "win" for any localhost:5432 connection, causing password/auth errors
+    # that have nothing to do with this project's actual database.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

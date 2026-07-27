@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoginForm } from './components/LoginForm'
 import { EmployeeDirectory } from './components/EmployeeDirectory'
+import { ApprovalInbox } from './components/ApprovalInbox'
 
 function AuthenticatedView() {
   const { user, logout } = useAuth()
@@ -28,6 +29,13 @@ function AuthenticatedView() {
           >
             Sign out
           </button>
+        </div>
+
+        <div className="mt-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Pending Approvals
+          </h2>
+          <ApprovalInbox />
         </div>
 
         <div className="mt-6">

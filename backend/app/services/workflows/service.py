@@ -13,16 +13,19 @@ an instance (so a demo doesn't wait on a poll tick for the easy steps), and
 ADR-0002's "the worker is a scheduler, not a second implementation."
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
-from app.models.enums import FailureBehavior, InstanceStatus, StepStatus, StepType
+from app.models.enums import FailureBehavior, InstanceStatus, StepStatus, StepType, UserRole
 from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 from app.repositories import (
+    approval_request_repo,
+    employee_repo,
+    user_repo,
     workflow_definition_repo,
     workflow_event_repo,
     workflow_instance_repo,
@@ -44,7 +47,7 @@ _BACKOFF_SCHEDULE_SECONDS = [2, 8, 30]
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _backoff_seconds(attempt_count: int) -> int:
@@ -69,7 +72,22 @@ def start_workflow(
     """
     existing_event = workflow_event_repo.get_by_dedup_key(db, dedup_key)
     if existing_event is not None and existing_event.workflow_instance_id is not None:
-        return workflow_instance_repo.get_by_id(db, existing_event.workflow_instance_id)
+        existing_instance = workflow_instance_repo.get_by_id(
+            db, existing_event.workflow_instance_id
+        )
+        if existing_instance is None:
+            # The event row points at an instance that no longer exists —
+            # a genuine data-integrity problem (e.g. manual deletion), not
+            # a normal runtime path. Fail loudly here rather than returning
+            # None from a function whose signature promises a real
+            # WorkflowInstance, which would just surface as a confusing
+            # AttributeError wherever the caller next touches the result.
+            raise NotFoundError(
+                f"workflow event with dedup_key '{dedup_key}' references "
+                f"workflow instance '{existing_event.workflow_instance_id}', "
+                "which no longer exists"
+            )
+        return existing_instance
 
     definition_row = workflow_definition_repo.get_active_by_key(db, workflow_key)
     if definition_row is None:
@@ -170,6 +188,7 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
             transition_step(step_row, StepStatus.WAITING_APPROVAL)
             transition_instance(instance, InstanceStatus.WAITING_APPROVAL)
             db.commit()
+            _create_approval_request(db, instance, step_row, step_def)
             return instance
 
         result = _execute(step_def, step_row, definition, instance, context)
@@ -191,6 +210,63 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
     instance.current_step_key = None
     db.commit()
     return instance
+
+
+def _create_approval_request(
+    db: Session,
+    instance: WorkflowInstance,
+    step_row: WorkflowStepInstance,
+    step_def: StepDefinition,
+) -> None:
+    """Called the moment a step pauses at waiting_approval — not upfront
+    when the instance starts, so an approval step that a condition skips
+    (e.g. it_review_access when the AI didn't flag review) never creates a
+    row anyone would see in their inbox.
+
+    Deliberately calls the repository directly rather than a
+    services/approvals function — see docs/architecture/service-boundaries.md
+    for why: services/approvals depends on this module (to call
+    resume_workflow_step once a decision is made), so this module calling
+    back into services/approvals would be circular. Creating a row is pure
+    repository work with no business logic beyond `_resolve_approver`,
+    which is why it can live here without needing the approvals service.
+    """
+    approval_config = step_def.approval
+    if approval_config is None:
+        # Guaranteed non-None for type == APPROVAL by
+        # WorkflowDefinitionSchema's validator — this branch only exists to
+        # satisfy the type checker, not because it can happen at runtime.
+        raise ValueError(f"approval step '{step_def.key}' is missing its approval config")
+
+    assigned_user_id = _resolve_approver(db, instance, approval_config.approver_role)
+    approval_request_repo.create(
+        db,
+        workflow_instance_id=instance.id,
+        step_instance_id=step_row.id,
+        approver_role=approval_config.approver_role,
+        assigned_user_id=assigned_user_id,
+        sequence_order=approval_config.sequence_order,
+    )
+
+
+def _resolve_approver(
+    db: Session, instance: WorkflowInstance, approver_role: UserRole
+) -> UUID | None:
+    """Manager approvals are assigned to the specific employee's actual
+    manager (Employee.manager_id -> that manager's linked User account),
+    when one exists — approving your own team's onboarding shouldn't be
+    something any random manager in the company can pick up. Every other
+    role (IT, Security) has no natural single owner in this data model, so
+    those stay a role-based pool: assigned_user_id=None, visible to anyone
+    with that role via approval_request_repo.list_pending_for_user.
+    """
+    if approver_role != UserRole.MANAGER or instance.employee_id is None:
+        return None
+    employee = employee_repo.get_by_id(db, instance.employee_id)
+    if employee is None or employee.manager_id is None:
+        return None
+    manager_user = user_repo.get_by_employee_id(db, employee.manager_id)
+    return manager_user.id if manager_user else None
 
 
 def _execute(
@@ -267,11 +343,11 @@ def resume_workflow_step(
     decision: Literal["approved", "rejected"],
     notes: str | None = None,
 ) -> WorkflowInstance:
-    """The generic pause/resume half of "human-in-the-loop" — Phase 7's
-    actual ApprovalRequest/ApprovalDecision models and routes will call
-    this once a real decision is recorded. Tested directly here (simulating
-    what Phase 7 will do) so pause/resume is proven correct before Phase 7
-    exists to exercise it for real.
+    """The generic pause/resume half of "human-in-the-loop." Called from
+    two places: `services/approvals/service.py::decide()` for real approval
+    decisions (Phase 7), and directly from workflow-engine tests (Phase 6)
+    that simulate a decision without going through the approvals layer at
+    all — both are valid callers, this function doesn't know or care which.
     """
     if step_row.status != StepStatus.WAITING_APPROVAL or instance.status != (
         InstanceStatus.WAITING_APPROVAL

@@ -111,3 +111,15 @@ class FailureBehavior(str, enum.Enum):
     RETRY = "retry"
     FAIL_WORKFLOW = "fail_workflow"
     CONTINUE = "continue"
+
+
+class ApprovalRequestStatus(str, enum.Enum):
+    """Distinct from StepStatus.WAITING_APPROVAL/COMPLETED/REJECTED — this
+    is the human-facing record ("is there something in my inbox"), not the
+    engine's internal step state. The two are updated together (see
+    services/workflows/service.py's approval-pause path and
+    services/approvals/service.py's decide()), never independently."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"

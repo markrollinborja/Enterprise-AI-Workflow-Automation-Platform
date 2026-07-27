@@ -15,6 +15,15 @@ def get_by_id(db: Session, user_id: UUID) -> User | None:
     return db.get(User, user_id)
 
 
+def get_by_employee_id(db: Session, employee_id: UUID) -> User | None:
+    """Resolves an Employee row to its linked login, if one exists — used
+    by the workflow engine (Phase 7) to find the specific user a
+    manager_approval should be assigned to. Not every Employee has a User
+    account (see Employee's own docstring), so this can legitimately return
+    None even for a real manager."""
+    return db.scalar(select(User).where(User.employee_id == employee_id))
+
+
 def list_all(db: Session) -> list[User]:
     return list(db.scalars(select(User).order_by(User.created_at)))
 

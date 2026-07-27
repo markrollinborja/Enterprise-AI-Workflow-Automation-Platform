@@ -1,14 +1,16 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 
 # Import models here as they're added so Alembic can autogenerate migrations
 # against them.
 from app.models import (  # noqa: F401,E402
+    ApprovalDecision,
+    ApprovalRequest,
     Department,
     Employee,
     User,

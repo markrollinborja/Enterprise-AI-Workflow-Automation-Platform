@@ -25,16 +25,20 @@ Module: `app/services/workflows/` (plural — matches `employees`/`departments`,
 - `executors.py` (Phase 6) — stub implementations of `ai_action`/`mcp_tool` step execution, standing in for the AI service (Phase 9) and MCP client (Phase 10). Both stubs read test hooks (`force_failure_steps`, `ai_requires_review`) from the workflow's own `input_data`, which is what let the retry/backoff/pause path get built and tested before either real integration exists. Phase 9/10 replace only what's inside these two functions.
 - `service.py` (Phase 6) — the engine itself: `start_workflow`, `advance_workflow`, `resume_workflow_step`. Owns starting instances, executing steps in definition order, evaluating conditions to skip steps, dispatching by step type, applying each step's configured `failure_behavior` (retry/fail_workflow/continue), and pausing/resuming for human approval. Built entirely on `state_machine.py`'s transition functions — never writes `.status` directly.
 
-Does not: decide *who* needs to approve (that's a Phase 7 rules-engine/`ApprovalRequest` concern the engine will delegate to once it exists — Phase 6's `resume_workflow_step` is deliberately generic, taking a bare `decision`, and gets called directly in tests standing in for Phase 7's real approval routes), call a real OpenAI/MCP endpoint (Phase 9/10 own the *content* of `execute_ai_action_stub`/`execute_mcp_tool_stub`, not `service.py`), or write audit rows (Phase 13).
-Calls: `repositories/workflow_definition_repo`, `workflow_instance_repo`, `workflow_step_repo`, `workflow_event_repo`.
+Does not: call a real OpenAI/MCP endpoint (Phase 9/10 own the *content* of `execute_ai_action_stub`/`execute_mcp_tool_stub`, not `service.py`), or write audit rows (Phase 13). It does, as of Phase 7, create `ApprovalRequest` rows the moment a step pauses (`_create_approval_request`) and resolve who they're assigned to (`_resolve_approver`) — see the note under `approvals` below for why that lives here instead of in the approvals service.
+Calls: `repositories/workflow_definition_repo`, `workflow_instance_repo`, `workflow_step_repo`, `workflow_event_repo`, `approval_request_repo`, `employee_repo`, `user_repo`.
 
 **Worker.** `app/workers/runner.py` polls `list_ready_to_advance()` every few seconds and calls `advance_workflow` on each result — the same function `start_workflow`/`resume_workflow_step` call inline. One execution path, two callers (see ADR-0002 and [background-jobs.md](./background-jobs.md)).
 
 ## approvals
 
-Owns: creating `ApprovalRequest` rows, recording `ApprovalDecision`, sequencing multi-step approval chains, telling `workflow` when a step can unblock.
-Does not: decide *who* needs to approve — that's a rules-engine output the workflow engine hands it.
-Calls: `notifications`, `audit`.
+*(Built in Phase 7.)* Module: `app/services/approvals/service.py`.
+
+Owns: the human-facing side of approvals — `list_pending_for_user` (what's in my inbox: assigned-to-me, my role's pool, or everything for Administrators) and `decide` (authorize the caller against the specific `ApprovalRequest`, record an `ApprovalDecision`, flip the request's status, then resume or end the underlying workflow instance).
+
+Does not: create `ApprovalRequest` rows, or decide *who* an approval is assigned to — both happen in `services/workflows/service.py` when a step pauses, not here. This is a deliberate correction to the original Phase 1 sketch (which had `approvals` owning creation *and* the workflow engine calling into `approvals` to pause): that's circular. The actual dependency only runs one way — `approvals` calls `services/workflows/service.py::resume_workflow_step` to act on a decision; `workflows` never calls into `approvals`. Also does not send notifications or write audit rows yet (Phase 11, Phase 13).
+
+Calls: `repositories/approval_request_repo`, `approval_decision_repo`, and `services/workflows/service.py` (one-way, see above).
 
 ## rules
 
