@@ -23,7 +23,8 @@ from app.db.session import SessionLocal
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.enums import EmployeeStatus, EmploymentType, RiskLevel, UserRole
-from app.repositories import department_repo, employee_repo, user_repo
+from app.repositories import application_repo, department_repo, employee_repo, user_repo
+from app.services.rules.service import classify_request_risk, should_auto_approve
 from app.services.workflows.definition_loader import load_all_definitions
 from app.services.workflows.service import start_workflow
 
@@ -165,6 +166,50 @@ DEMO_USER_ROLES: dict[str, UserRole] = {
 }
 
 
+# Spans all three risk levels so the demo can show every branch of the
+# access-request workflow: auto-approve (low), manager-only (medium, when
+# paired with a low-risk employee), and the full manager+IT+security chain
+# (high). See services/rules/service.py for how an application's risk_level
+# combines with the requesting employee's risk_level.
+APPLICATIONS: list[dict] = [
+    {
+        "name": "Confluence",
+        "description": "Internal wiki and documentation.",
+        "risk_level": RiskLevel.LOW,
+    },
+    {
+        "name": "Zoom",
+        "description": "Video conferencing.",
+        "risk_level": RiskLevel.LOW,
+    },
+    {
+        "name": "Salesforce",
+        "description": "Customer relationship management (CRM).",
+        "risk_level": RiskLevel.MEDIUM,
+    },
+    {
+        "name": "GitHub",
+        "description": "Source code hosting and CI/CD.",
+        "risk_level": RiskLevel.MEDIUM,
+    },
+    {
+        "name": "Slack Admin Console",
+        "description": "Workspace administration for Slack.",
+        "risk_level": RiskLevel.MEDIUM,
+    },
+    {
+        "name": "AWS Console",
+        "description": "Production cloud infrastructure.",
+        "risk_level": RiskLevel.HIGH,
+    },
+    {
+        "name": "NetSuite Finance",
+        "description": "Finance and payroll system.",
+        "risk_level": RiskLevel.HIGH,
+    },
+]
+
+
 def seed_departments(db: Session) -> dict[str, Department]:
     result: dict[str, Department] = {}
     created = 0
@@ -216,6 +261,15 @@ def seed_employees(db: Session, departments: dict[str, Department]) -> dict[str,
 
     print(f"Employees: {created} created, {len(EMPLOYEES) - created} already existed.")
     return by_email
+
+
+def seed_applications(db: Session) -> None:
+    created = 0
+    for data in APPLICATIONS:
+        if application_repo.get_by_name(db, data["name"]) is None:
+            application_repo.create(db, **data)
+            created += 1
+    print(f"Applications: {created} created, {len(APPLICATIONS) - created} already existed.")
 
 
 def seed_demo_users() -> None:
@@ -290,11 +344,60 @@ def seed_demo_workflow_instance(db: Session) -> None:
     )
 
 
+def seed_demo_access_request(db: Session) -> None:
+    """A second demo WorkflowInstance, deliberately pairing a LOW-risk
+    employee (Jordan Lee) with a HIGH-risk application (AWS Console) —
+    classify_request_risk's "highest wins" rule means the overall request is
+    still HIGH, so this demo shows the full manager+IT+security approval
+    chain, distinct from the single-approval onboarding demo. Left paused at
+    manager_approval for the same reason as seed_demo_workflow_instance:
+    proving the engine waits on a human rather than just running start to
+    finish.
+
+    Uses a fixed dedup_key (unlike the real /access-requests route, which
+    generates a random one per submission — see
+    services/access_requests/service.py) because this seed must resolve to
+    the same single instance on every `docker compose up`, not create a new
+    one on every restart.
+    """
+    employee = employee_repo.get_by_work_email(db, "jordan.lee@cordant.io")
+    requester = user_repo.get_by_email(db, "jordan.lee@cordant.io")
+    application = application_repo.get_by_name(db, "AWS Console")
+    if employee is None or requester is None or application is None:
+        print("Skipping demo access request: seed data not found yet.")
+        return
+
+    risk = classify_request_risk(application.risk_level, employee.risk_level)
+    auto_approved = should_auto_approve(risk)
+    instance = start_workflow(
+        db,
+        workflow_key="software_access_request",
+        input_data={
+            "employee_id": str(employee.id),
+            "application_id": str(application.id),
+            "justification": (
+                "Need production AWS access to investigate a customer-reported outage."
+            ),
+            "application_risk_level": risk.value,
+            "auto_approved": auto_approved,
+        },
+        dedup_key=f"software_access_request:demo:{employee.id}:{application.id}",
+        initiated_by_user_id=requester.id,
+        employee_id=employee.id,
+    )
+    print(
+        f"Demo access request: {application.name} for {employee.first_name} "
+        f"{employee.last_name} is '{instance.status.value}' "
+        f"(risk: {risk.value}, current step: {instance.current_step_key})."
+    )
+
+
 def run_all_seeds() -> None:
     db = SessionLocal()
     try:
         departments = seed_departments(db)
         seed_employees(db, departments)
+        seed_applications(db)
     finally:
         db.close()
 
@@ -319,6 +422,7 @@ def run_all_seeds() -> None:
     db = SessionLocal()
     try:
         seed_demo_workflow_instance(db)
+        seed_demo_access_request(db)
     finally:
         db.close()
 

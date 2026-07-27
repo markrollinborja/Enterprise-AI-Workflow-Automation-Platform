@@ -42,9 +42,19 @@ Calls: `repositories/approval_request_repo`, `approval_decision_repo`, and `serv
 
 ## rules
 
-Owns: pure, deterministic functions — approval routing, access-risk classification, whether AI should be invoked, whether escalation applies. Input in, decision out, no side effects, no DB writes.
-Does not: touch the database or call external services. This is what makes it trivially unit-testable.
-Calls: nothing. It's a leaf.
+*(Built in Phase 8.)* Module: `app/services/rules/service.py`.
+
+Owns: `classify_request_risk` (an access request's overall risk is the higher of the application's risk and the requesting employee's risk — "highest wins") and `should_auto_approve` (only `LOW` overall risk skips human approval). Input in, decision out, no side effects, no DB writes — see `tests/test_rules.py`, which needs no fixtures at all.
+Does not: decide *which* approval steps run for a given risk level — that routing already lives in `workflows/software_access_request.json`'s own step `condition` strings (`input.application_risk_level in [...]`), evaluated by `conditions.py`. `rules` only computes the risk and the auto-approve flag; the workflow JSON is the one place that turns a risk level into a specific approval chain. Also does not decide whether AI should be invoked or whether escalation applies — no V1 workflow needs either rule yet, so they're not built ahead of a real caller.
+Calls: nothing. It's a leaf, same as `conditions.py` and `state_machine.py`.
+
+## applications / access_requests
+
+*(Built in Phase 8.)* `applications` (`app/services/applications/service.py`) is a thin read-only layer over the `Application` catalog — same shape as `employees`/`departments`, no write path in V1 (the catalog is seed-managed).
+
+`access_requests` (`app/services/access_requests/service.py`) owns the second workflow's entry point: resolving the caller's linked `Employee`, looking up the requested `Application`, calling `rules.classify_request_risk`/`should_auto_approve`, and calling `services/workflows/service.py::start_workflow` with the result folded into `input_data`. This is the module that actually proves the workflow engine is reusable, not onboarding-shaped code with a second JSON file attached — it's a different service, composing the same engine, rules, and state machine `employees`/`approvals` also sit on top of.
+Does not: decide risk (that's `rules`) or execute workflow steps (that's `workflows/service.py`). Does not accept `employee_id` as client input — it's always derived from the authenticated caller's own linked employee record, so one user can't submit a request as another.
+Calls: `repositories/application_repo`, `employee_repo`, `services/rules/service.py`, `services/workflows/service.py::start_workflow`.
 
 ## ai
 

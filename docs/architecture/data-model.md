@@ -57,7 +57,7 @@ erDiagram
 
 **AccessPackage** — `id, name, department_id (FK, nullable), risk_level, included_systems (JSON), description, created_at`. Seeded reference data.
 
-**Application** — `id, name, risk_level, owner_role, description`. Seeded reference data, drives access-request risk rules.
+**Application** — `id, name, description, risk_level, created_at`. *(Built in Phase 8.)* Seeded reference data (7 rows spanning all three risk levels — see `backend/app/db/seed.py`), drives access-request risk classification (`services/rules/service.py::classify_request_risk`). Revised from the Phase 1 sketch above (which also listed `owner_role`): nothing in the Phase 8 implementation reads it — `it_approval` and `security_approval` steps route to fixed roles (`it`, `security`) regardless of which application is being requested, not to a per-application owner. Per-application dynamic approver routing is a real feature, not something this project has built; shipping the column anyway would just be dead weight. See ADR-0009 for the related decision not to source this catalog from a real identity provider (Okta) in V1.
 
 **WorkflowDefinition** — `id, key, name, version, trigger_type, trigger_event, definition_json, is_active, created_at`. *(Built in Phase 5.)* `employee_onboarding` and `software_access_request` each get one row (loaded from `workflows/*.json` at seed time by `services/workflows/definition_loader.py`, validated against `WorkflowDefinitionSchema`). `key` is not unique alone — `(key, version)` identifies a specific revision; only one row per `key` should be `is_active=True`, enforced by the loader.
 

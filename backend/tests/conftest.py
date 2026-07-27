@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.main import app
+from app.models.application import Application
 from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
@@ -36,7 +37,10 @@ def db_session():
     delete order by hand. ApprovalDecision and ApprovalRequest (FK to
     workflow/step instances and users) go first, then WorkflowEvent, then
     step/instance rows, before employees/users themselves;
-    workflow_definitions has no such dependency so it can go last.
+    workflow_definitions and applications have no such dependency (no FK
+    points at either — WorkflowInstance.input_data only references an
+    application_id inside its own JSON blob, not a real foreign key) so
+    they can go last, in any order.
     """
     session: Session = SessionLocal()
     try:
@@ -53,5 +57,6 @@ def db_session():
         session.execute(delete(Employee))
         session.execute(delete(Department))
         session.execute(delete(WorkflowDefinition))
+        session.execute(delete(Application))
         session.commit()
         session.close()

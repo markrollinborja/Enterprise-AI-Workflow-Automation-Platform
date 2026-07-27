@@ -9,7 +9,8 @@
     "employee_id": "required",
     "application_id": "required",
     "justification": "required",
-    "application_risk_level": "required"
+    "application_risk_level": "required",
+    "auto_approved": "required"
   },
   "steps": [
     {
@@ -22,6 +23,7 @@
       "key": "manager_approval",
       "name": "Manager approves request",
       "type": "approval",
+      "condition": "input.auto_approved == false",
       "approval": { "approver_role": "manager", "sequence_order": 1 },
       "failure_behavior": "fail_workflow"
     },
