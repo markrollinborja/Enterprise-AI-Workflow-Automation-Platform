@@ -1,0 +1,21 @@
+# ADR-0012: Sync-Wrapped MCP Client, No Internal Retry, One Generic Jira Tool
+
+**Status:** Accepted — 2026-07-28
+
+**Context:** Phase 10 replaces the stub `mcp_tool` executor with a real MCP client connecting to `mcp_server/` (ADR-0005) over streamable-HTTP. Three implementation decisions came up that weren't fixed by the Phase 1 docs and needed resolving before writing the client.
+
+**Decision 1 — sync-wrapped, connect-per-call.** The `mcp` SDK's client (`ClientSession`, `streamable_http_client`) is async; this codebase is sync top to bottom (sync SQLAlchemy sessions, sync service functions). `services/integrations/mcp_client.py::call_tool` opens a fresh connection and session for every single tool call via `anyio.run(...)`, rather than maintaining a persistent client session across calls.
+
+**Decision 2 — no retry inside the MCP client.** `call_tool` calls a tool exactly once and reports success or failure. It does not implement its own retry/backoff loop, even though `docs/architecture/integration-strategy.md` (written in Phase 1, before the engine existed) describes retry-with-backoff as living in `services/integrations`.
+
+**Decision 3 — one generic `create_jira_task` tool, not two.** The onboarding and access-request workflows both create a Jira issue, but at different points they'd drifted to reference two distinct tool names (`create_jira_onboarding_task`, `create_jira_access_request_task`) that only existed in the stub-era JSON, never in the original architecture doc. `mcp_server` registers one `create_jira_task` tool; `services/workflows/executors.py::_build_mcp_tool_arguments` decides what summary/description/project to send based on which *step* is calling it (`step_def.key`), not which tool name is used.
+
+**Alternatives considered:**
+
+- **Persistent MCP client session**, opened once at process startup and reused. Rejected for V1: this project's call volume is a handful of tool calls per workflow instance, not a hot path — a persistent session buys nothing at this scale and adds real complexity (session lifecycle across FastAPI's request/worker-poll boundary, reconnect-on-drop handling) for a problem that doesn't exist yet. Revisit if a future phase adds a use case that calls MCP tools at genuinely high frequency.
+- **A second retry loop inside `services/integrations`**, matching the Phase 1 doc literally. Rejected: Phase 6 already built step-level retry with real backoff scheduling (`_BACKOFF_SCHEDULE_SECONDS`, `scheduled_at`, the worker polling `waiting_external`) before this integration existed to use it. A second, nested retry loop here would mean up to 9 real attempts per permanent failure (3 engine retries × 3 internal retries) instead of the 3 every other failing step gets, and duplicates a mechanism that's already tested (`test_mcp_tool_failure_retries_then_recovers` et al.).
+- **Two distinct Jira tools, matching the JSON as it stood.** Rejected: the original Phase 1 architecture doc always specified one generic tool, and a 5-tool catalog with two near-duplicate Jira tools reads worse in an interview than a clean 4. Both workflow JSON files were edited (`mcp_tool: "create_jira_task"`), with their `version` bumped from 1 to 2 so `definition_loader.py`'s upsert logic actually picks up the change on existing databases — a same-version JSON edit is treated as "unchanged" and silently ignored otherwise (caught before it could cause a confusing "why is my Jira ticket still named wrong" bug on an already-seeded database).
+
+**Consequences:** `anyio.run()` inside `call_tool` only works because it's always invoked from a plain sync thread with no event loop already running — never from inside an async FastAPI route body directly. `mcp_client.py`'s `call_tool` writes exactly one `MCPToolExecution` row per invocation (`attempt_number` always 1 today); the engine's own `WorkflowStepInstance.attempt_count` is what actually tracks retries across calls to `call_tool`. `_build_mcp_tool_arguments` in `executors.py` dispatching on `step_def.key` means adding a third Jira-creating workflow later requires one new `if` branch there, not a new MCP tool.
+
+**See also:** [mcp-architecture.md](../architecture/mcp-architecture.md), [integration-strategy.md](../architecture/integration-strategy.md) (updated to match this decision).

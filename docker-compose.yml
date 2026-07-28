@@ -35,6 +35,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
       WORKFLOWS_DIR: /app/workflows
+      MCP_SERVER_URL: http://mcp_server:8100/mcp
     command: >
       sh -c "alembic upgrade head &&
              python -m app.db.seed &&
@@ -44,6 +45,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mcp_server:
+        condition: service_started
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
@@ -81,6 +84,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
+      MCP_SERVER_URL: http://mcp_server:8100/mcp
     # The sleep is a pragmatic wait for backend's migrations+seed to finish
     # (depends_on only waits for the container to *start*, not for that
     # command to complete) — not bulletproof against a slow first boot,
@@ -92,14 +96,36 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+      mcp_server:
+        condition: service_started
     volumes:
       - ./backend/app:/app/app
 
+  mcp_server:
+    # Its own real process (ADR-0005) — a separate Dockerfile/codebase from
+    # backend, not a module backend imports. The backend and worker connect
+    # to this over the network as MCP clients (see
+    # backend/app/services/integrations/mcp_client.py). See ADR-0012 for
+    # why MCP_MOCK_MODE defaults true: a demo must never depend on live
+    # Jira/Slack/Google credentials being valid right now.
+    build:
+      context: ./mcp_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # lookup_employee (Phase 10 checkpoint 2) reads Employee/Department
+      # rows directly — its own minimal, read-only query, not a shared
+      # import of backend's SQLAlchemy models (two genuinely independent
+      # services, sharing only the DB schema).
+      DATABASE_URL: postgresql://meridian:meridian@db:5432/meridian_flow
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./mcp_server/app:/app/app
+
 volumes:
   pgdata:
-
-# mcp_server (Phase 10) is added here once its code exists — see
-# docs/architecture/system-architecture.md for the full intended 5-service
-# topology. Keeping compose scoped to what actually runs today is
-# deliberate: `docker compose up` should never point at a Dockerfile that
-# doesn't exist yet.

@@ -48,8 +48,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-nano"
 
-    # MCP
-    mcp_server_url: str = "http://mcp_server:8100"
+    # MCP — see app/services/integrations/mcp_client.py. The path suffix
+    # matters: FastMCP's streamable-http transport mounts the protocol
+    # endpoint at /mcp by default (see mcp_server/app/server.py), it isn't
+    # served at the bare root.
+    mcp_server_url: str = "http://mcp_server:8100/mcp"
     mcp_mock_mode: bool = True
 
     # External integrations — mock mode defaults true, see docs/architecture/integration-strategy.md

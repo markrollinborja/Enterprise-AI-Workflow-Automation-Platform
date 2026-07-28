@@ -110,9 +110,9 @@ def test_low_risk_request_is_auto_approved_and_runs_to_completion(db_session: Se
 
     assert response.computed_risk_level == RiskLevel.LOW
     assert response.auto_approved is True
-    # No approval step ever paused it, and the mcp_tool stubs always
-    # succeed (see executors.py) — the instance should run straight through
-    # to completion with zero human involvement.
+    # No approval step ever paused it, and the (mocked, per conftest.py's
+    # autouse MCP fixture) mcp_tool steps always succeed — the instance
+    # should run straight through to completion with zero human involvement.
     assert response.status == InstanceStatus.COMPLETED
     assert response.current_step_key is None
 

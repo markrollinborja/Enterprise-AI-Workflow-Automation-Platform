@@ -36,7 +36,7 @@ from app.services.workflows.conditions import build_condition_context, evaluate_
 from app.services.workflows.executors import (
     StepExecutionResult,
     execute_ai_action,
-    execute_mcp_tool_stub,
+    execute_mcp_tool,
 )
 from app.services.workflows.state_machine import transition_instance, transition_step
 
@@ -282,7 +282,7 @@ def _execute(
     if step_def.type == StepType.AI_ACTION:
         return execute_ai_action(db, step_def, step_row, instance, context)
     if step_def.type == StepType.MCP_TOOL:
-        return execute_mcp_tool_stub(step_def, step_row, context)
+        return execute_mcp_tool(db, step_def, step_row, instance, context)
     raise ValueError(f"unhandled step type in _execute: {step_def.type}")
 
 

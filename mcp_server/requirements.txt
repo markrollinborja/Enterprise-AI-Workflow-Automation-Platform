@@ -1,0 +1,19 @@
+mcp==1.9.4
+# Pinned to the v1.x stable line, not v2 (v2 is an explicitly-labeled
+# pre-release as of the SDK's README at write-time, July 2026 — "do not use
+# v2 in production", breaking changes between pre-releases). Could not
+# verify the exact newest v1.x patch from this environment (no PyPI
+# network access at write-time) — run `pip index versions mcp` before
+# `pip install` and bump this pin to the newest 1.x release; keep the
+# upper bound at <2 regardless, per the SDK's own migration warning.
+httpx==0.28.1
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+psycopg[binary]==3.2.3
+# Real-mode Google Calendar only (see app/tools/calendar.py) — imported
+# lazily inside _real_schedule_calendar_event, not at module load time, so
+# the (much more common) mock-mode path never pays their import cost and a
+# transient issue with either package can't break the whole server's startup.
+google-api-python-client==2.154.0
+google-auth==2.37.0

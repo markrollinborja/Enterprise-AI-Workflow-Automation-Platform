@@ -12,12 +12,15 @@ from app.models.enums import (
     EmploymentType,
     FailureBehavior,
     InstanceStatus,
+    MCPExecutionStatus,
+    MCPToolCaller,
     RiskLevel,
     StepStatus,
     StepType,
     TriggerType,
     UserRole,
 )
+from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -41,6 +44,9 @@ __all__ = [
     "EmploymentType",
     "FailureBehavior",
     "InstanceStatus",
+    "MCPExecutionStatus",
+    "MCPToolCaller",
+    "MCPToolExecution",
     "RiskLevel",
     "StepStatus",
     "StepType",

@@ -144,3 +144,28 @@ class AIExecutionStatus(str, enum.Enum):
 
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class MCPToolCaller(str, enum.Enum):
+    """Who invoked an MCP tool — the workflow engine dispatching a scripted
+    `mcp_tool` step (create_jira_task, send_slack_notification,
+    schedule_calendar_event), or the AI service's own tool-calling loop
+    deciding mid-reasoning to call lookup_employee (see mcp-architecture.md,
+    "How the AI agent discovers and invokes tools"). Both go through the
+    same services/integrations/mcp_client.py wrapper and land in the same
+    MCPToolExecution table — this column is what disambiguates a row after
+    the fact."""
+
+    WORKFLOW_ENGINE = "workflow_engine"
+    AI_AGENT = "ai_agent"
+
+
+class MCPExecutionStatus(str, enum.Enum):
+    """Whether a single MCPToolExecution row represents a successful tool
+    call (real or mock mode — both count as "completed", MCPToolExecution's
+    own mock_mode column is what tells the two apart) or a failure (MCP
+    transport error, the tool itself rejected the input, a real-mode
+    external API error)."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"

@@ -14,3 +14,14 @@ httpx==0.28.1
 # is the current stable structured-outputs interface this project's AI service uses
 # (see app/services/ai/service.py) — not the older client.beta.chat.completions.parse().
 openai==2.48.0
+# MCP client (see app/services/integrations/mcp_client.py). Pinned to the
+# v1.x stable line, not v2 (an explicitly-labeled pre-release as of the
+# SDK's README at write-time — "do not use v2 in production"). Could not
+# verify the exact newest v1.x patch from this environment (no PyPI network
+# access at write-time) — run `pip index versions mcp` and bump this pin;
+# keep the upper bound below 2 regardless. anyio is what call_tool() uses
+# to run the SDK's async client from this codebase's sync call sites — it's
+# already a transitive dependency of fastapi/httpx, listed explicitly here
+# because backend code imports it directly (see ADR-0012).
+mcp==1.9.4
+anyio==4.7.0

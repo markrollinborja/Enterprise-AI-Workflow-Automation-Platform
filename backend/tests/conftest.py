@@ -14,6 +14,7 @@ from app.models.application import Application
 from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
+from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -36,6 +37,56 @@ class _DefaultAIResponse(BaseModel):
     explanation: str = "Default autouse mock — see conftest.py."
     missing_information: list[str] = []
     summary: str = "Default autouse mock — see conftest.py."
+
+
+_DEFAULT_MCP_TOOL_RESULTS: dict[str, dict[str, object]] = {
+    "create_jira_task": {
+        "issue_key": "MOCK-1001",
+        "issue_url": "https://mock-jira.example.com/browse/MOCK-1001",
+        "status": "created",
+    },
+    "send_slack_notification": {
+        "message_ts": "1700000000.000001",
+        "channel": "#mock",
+        "status": "sent",
+    },
+    "schedule_calendar_event": {
+        "event_id": "mock-event-id",
+        "event_url": "https://calendar.google.com/calendar/event?eid=mock-event-id",
+        "status": "scheduled",
+    },
+}
+
+
+@pytest.fixture(autouse=True)
+def _mock_mcp_client_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test gets a mocked MCP client by default, for exactly the
+    reason the OpenAI autouse fixture above exists: once execute_mcp_tool
+    is real (Phase 10), any test that walks a happy path through an
+    mcp_tool step would otherwise make a real network call to mcp_server
+    during `pytest` — the same class of bug the OpenAI incident was, just
+    applied to a second integration. Building the fixture in from the
+    start here rather than discovering it after a confusing failure.
+
+    Patches services/integrations/mcp_client._call_tool_async specifically
+    (not the whole call_tool function) — call_tool's own logic (writing
+    the MCPToolExecution audit row, timing, error translation) still runs
+    for real in every test; only the actual network call is faked. Tests
+    that care about MCP failure handling override this themselves via
+    monkeypatch, the same pattern test_ai_service.py already uses for
+    OpenAI.
+    """
+
+    async def fake_call_tool_async(
+        server_url: str, tool_name: str, arguments: dict[str, object]
+    ) -> dict[str, object]:
+        if tool_name not in _DEFAULT_MCP_TOOL_RESULTS:
+            raise ValueError(f"no default mock result configured for MCP tool {tool_name!r}")
+        return dict(_DEFAULT_MCP_TOOL_RESULTS[tool_name])
+
+    monkeypatch.setattr(
+        "app.services.integrations.mcp_client._call_tool_async", fake_call_tool_async
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -83,8 +134,8 @@ def db_session():
     self-referential manager_id both need clearing before the rows they
     point at can be deleted, or Postgres rejects the delete on an FK
     violation — nulling both out first sidesteps having to compute a safe
-    delete order by hand. ApprovalDecision, ApprovalRequest, and
-    AIExecution (all FK to workflow/step instances, and in
+    delete order by hand. ApprovalDecision, ApprovalRequest, AIExecution,
+    and MCPToolExecution (all FK to workflow/step instances, and in
     ApprovalDecision/AIExecution's case to users too) go first, then
     WorkflowEvent, then step/instance rows, before employees/users
     themselves. AccessPackage has a real FK to Department
@@ -108,6 +159,7 @@ def db_session():
             session.execute(delete(ApprovalDecision))
             session.execute(delete(ApprovalRequest))
             session.execute(delete(AIExecution))
+            session.execute(delete(MCPToolExecution))
             session.execute(delete(WorkflowEvent))
             session.execute(delete(WorkflowStepInstance))
             session.execute(delete(WorkflowInstance))

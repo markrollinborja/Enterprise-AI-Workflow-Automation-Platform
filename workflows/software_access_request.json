@@ -4,7 +4,7 @@
   "description": "An employee requests access to an internal application. Approval chain length scales with the application's risk level; an AI summarizes the justification for non-trivial requests; IT fulfills the request via MCP once approved.",
   "trigger_type": "manual",
   "trigger_event": null,
-  "version": 1,
+  "version": 2,
   "input_schema": {
     "employee_id": "required",
     "application_id": "required",
@@ -56,7 +56,7 @@
       "key": "create_fulfillment_task",
       "name": "Create IT fulfillment task",
       "type": "mcp_tool",
-      "mcp_tool": "create_jira_access_request_task",
+      "mcp_tool": "create_jira_task",
       "failure_behavior": "retry",
       "max_attempts": 3
     },

@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401,E402
     ApprovalRequest,
     Department,
     Employee,
+    MCPToolExecution,
     User,
     WorkflowDefinition,
     WorkflowEvent,

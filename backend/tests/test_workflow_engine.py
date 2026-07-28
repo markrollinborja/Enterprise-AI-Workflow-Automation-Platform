@@ -150,10 +150,14 @@ def test_onboarding_happy_path_completes_after_both_approvals(
 
     assert instance.status == InstanceStatus.COMPLETED
     assert instance.completed_at is not None
+    # Phase 10: these are real mcp_tool steps now — output_data is whatever
+    # the (mocked, per conftest.py's autouse MCP fixture) tool actually
+    # returned, not a "stub": True placeholder.
+    assert _step(instance, "create_it_tasks").output_data["status"] == "created"
+    assert _step(instance, "schedule_orientation").output_data["status"] == "scheduled"
+    assert _step(instance, "notify_slack").output_data["status"] == "sent"
     for key in ("create_it_tasks", "schedule_orientation", "notify_slack"):
-        step = _step(instance, key)
-        assert step.status == StepStatus.COMPLETED
-        assert step.output_data["stub"] is True
+        assert _step(instance, key).status == StepStatus.COMPLETED
 
 
 def test_manager_rejection_stops_the_workflow(db_session: Session) -> None:

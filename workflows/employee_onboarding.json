@@ -4,7 +4,7 @@
   "description": "Onboards a newly hired employee: manager approval, an AI-recommended access package, an IT review of that recommendation, MCP-driven task creation and orientation scheduling, and a Slack notification.",
   "trigger_type": "event",
   "trigger_event": "employee.created",
-  "version": 1,
+  "version": 2,
   "input_schema": {
     "employee_id": "required"
   },
@@ -42,7 +42,7 @@
       "key": "create_it_tasks",
       "name": "Create Jira onboarding tasks",
       "type": "mcp_tool",
-      "mcp_tool": "create_jira_onboarding_task",
+      "mcp_tool": "create_jira_task",
       "failure_behavior": "retry",
       "max_attempts": 3
     },
