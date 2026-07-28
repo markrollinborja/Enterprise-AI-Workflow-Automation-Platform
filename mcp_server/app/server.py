@@ -21,12 +21,15 @@ from mcp.server.fastmcp import FastMCP
 from app.schemas import (
     CreateJiraTaskInput,
     CreateJiraTaskOutput,
+    LookupEmployeeInput,
+    LookupEmployeeOutput,
     ScheduleCalendarEventInput,
     ScheduleCalendarEventOutput,
     SendSlackNotificationInput,
     SendSlackNotificationOutput,
 )
 from app.tools.calendar import execute_schedule_calendar_event
+from app.tools.employee import execute_lookup_employee
 from app.tools.jira import execute_create_jira_task
 from app.tools.slack import execute_send_slack_notification
 
@@ -92,8 +95,17 @@ def schedule_calendar_event(
     )
 
 
-# lookup_employee is added here in Phase 10 checkpoint 2 (app/tools/employee.py)
-# once the AI service's agentic tool-calling loop is built to actually call it.
+@mcp.tool()
+def lookup_employee(employee_id: str) -> LookupEmployeeOutput:
+    """Look up an employee's directory record (name, job title, department,
+    employment type, status, risk level) by employee ID. Read-only. Called
+    exclusively by the AI service's agentic tool-calling loop
+    (backend/app/services/ai/service.py) when it needs employee details
+    beyond what's already in its prompt — see app/tools/employee.py.
+    Returns found=False rather than raising when no such employee exists;
+    that's a normal outcome for the caller to react to, not a tool
+    failure."""
+    return execute_lookup_employee(LookupEmployeeInput(employee_id=employee_id))
 
 
 if __name__ == "__main__":

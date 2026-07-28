@@ -55,6 +55,22 @@ _DEFAULT_MCP_TOOL_RESULTS: dict[str, dict[str, object]] = {
         "event_url": "https://calendar.google.com/calendar/event?eid=mock-event-id",
         "status": "scheduled",
     },
+    # Only actually exercised by tests whose fake OpenAI client returns a
+    # tool_calls response (see the default _mock_openai_by_default fixture
+    # below, which never does) — present here so any test that does isn't
+    # the first to discover this dict needs a fourth entry.
+    "lookup_employee": {
+        "found": True,
+        "employee_id": "00000000-0000-0000-0000-000000000000",
+        "first_name": "Mock",
+        "last_name": "Employee",
+        "work_email": "mock.employee@cordant.io",
+        "job_title": "Software Engineer",
+        "department_name": "Engineering",
+        "employment_type": "full_time",
+        "status": "active",
+        "risk_level": "low",
+    },
 }
 
 
@@ -105,10 +121,20 @@ def _mock_openai_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     test_workflow_engine.py) call
     monkeypatch.setattr("app.services.ai.service._client", ...) themselves,
     which simply overrides this patch for that one test.
+
+    tool_calls=None here means recommend_access_package's agentic loop
+    (see services/ai/service.py) exits after its first round for any test
+    using this default — it never actually calls lookup_employee unless a
+    test opts into simulating that explicitly, same as test_ai_service.py
+    already does per-test for OpenAI generally.
     """
     fake_completion = SimpleNamespace(
         choices=[
-            SimpleNamespace(message=SimpleNamespace(parsed=_DefaultAIResponse(), refusal=None))
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    parsed=_DefaultAIResponse(), refusal=None, tool_calls=None, content=None
+                )
+            )
         ],
         usage=SimpleNamespace(total_tokens=0),
     )

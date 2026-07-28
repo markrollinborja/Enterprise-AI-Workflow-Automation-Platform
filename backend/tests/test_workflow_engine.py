@@ -97,7 +97,13 @@ def _mock_recommendation(
         explanation="Mocked for engine test.",
     )
     fake_completion = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(parsed=parsed, refusal=None))],
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    parsed=parsed, refusal=None, tool_calls=None, content=None
+                )
+            )
+        ],
         usage=SimpleNamespace(total_tokens=42),
     )
     fake_client = SimpleNamespace(

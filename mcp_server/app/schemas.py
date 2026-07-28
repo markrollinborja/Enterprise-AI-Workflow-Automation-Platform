@@ -54,3 +54,28 @@ class ScheduleCalendarEventOutput(BaseModel):
     event_id: str
     event_url: str
     status: Literal["scheduled", "failed"]
+
+
+class LookupEmployeeInput(BaseModel):
+    employee_id: str = Field(description="Employee UUID, as a string.")
+
+
+class LookupEmployeeOutput(BaseModel):
+    """No mock-mode counterpart (contrast with the three tools above) —
+    this reads Meridian Flow's own database, not an external SaaS, so
+    there's nothing to simulate. `found=False` (all other fields None) is
+    the normal, expected shape for an unknown or malformed ID — a business
+    outcome the caller (the AI agent's tool-calling loop) is expected to
+    handle, not a tool failure. Real failures (the database being
+    unreachable) still propagate as an MCP tool error."""
+
+    found: bool
+    employee_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    work_email: str | None = None
+    job_title: str | None = None
+    department_name: str | None = None
+    employment_type: str | None = None
+    status: str | None = None
+    risk_level: str | None = None

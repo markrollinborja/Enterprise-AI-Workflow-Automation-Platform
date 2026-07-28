@@ -24,14 +24,24 @@ history / docs/architecture/service-boundaries.md's "ai" section):
   conditional, and is explicitly an approximation — an LLM's self-reported
   confidence is not a calibrated probability. Worth saying plainly rather
   than presenting this as more rigorous than it is.
-- Does NOT call MCP for employee lookup, despite the original Phase 1
-  service-boundaries.md sketch describing that. Standing up the real MCP
-  server (Phase 10) a full phase early, to serve one internal read, isn't
-  worth it — this calls employee_repo directly. Revisit when Phase 10
-  builds lookup_employee for real; swapping this one call over is a
-  one-line change, not a redesign.
+- recommend_access_package now calls MCP for real (Phase 10 checkpoint 2):
+  the model is told an employee_id and must call the lookup_employee tool
+  (over MCP — see services/integrations/mcp_client.py) to learn the
+  employee's job title/department/employment type before it can
+  recommend, rather than the backend pre-fetching that context and
+  stuffing it into the prompt. This is a deliberate agentic tool-calling
+  loop (see _run_recommendation_conversation below), bounded to
+  _MAX_TOOL_ROUNDS rounds — it's what makes MCP a real architectural
+  component here (see docs/architecture/mcp-architecture.md, "How the AI
+  agent discovers and invokes tools"), not just a tool the backend could
+  just as easily have called directly. employee_repo is still used once,
+  before any OpenAI call, purely to fail fast if the workflow instance's
+  employee_id doesn't resolve to a real row — a data-integrity check, not
+  an AI concern, so it doesn't leak into the prompt.
 """
 
+import json
+import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -40,9 +50,41 @@ from pydantic import BaseModel, Field, create_model
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.enums import AIExecutionStatus, AITaskType
+from app.models.enums import AIExecutionStatus, AITaskType, MCPToolCaller
 from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 from app.repositories import access_package_repo, ai_execution_repo, employee_repo
+from app.services.integrations import mcp_client
+from app.services.integrations.mcp_client import MCPToolError
+
+# Bounds the agentic loop in _recommend_access_package: round 1 is where
+# the model is expected to request lookup_employee; round 2 is where it
+# should answer using the tool result fed back to it. If it hasn't
+# produced a final structured answer by then, that's treated the same as
+# any other AI failure (see the "ran out of rounds" fallthrough below) —
+# not an infinite loop against OpenAI's API.
+_MAX_TOOL_ROUNDS = 2
+
+_LOOKUP_EMPLOYEE_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "lookup_employee",
+        "description": (
+            "Look up an employee's job title, department, and employment "
+            "type by their employee ID."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "employee_id": {
+                    "type": "string",
+                    "description": "The employee's UUID, as a string.",
+                }
+            },
+            "required": ["employee_id"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 # LLM self-reported confidence is not a calibrated probability — this is an
 # approximation, chosen and documented as one, not tuned against real data
@@ -151,6 +193,14 @@ def _recommend_access_package(
             fallback_output={"requires_human_review": True},
         )
 
+    # Fast, local existence check — independent of the AI call below. An
+    # instance whose employee_id doesn't resolve to a real Employee row is
+    # a data-integrity problem, worth failing on before spending any
+    # OpenAI budget. This is not redundant with the AI agent's own
+    # lookup_employee call further down: that call goes over MCP, from the
+    # model's own reasoning, and is what's actually demoable/auditable
+    # (see the MCPToolExecution row it writes); this one is a plain, free,
+    # local guard.
     employee = (
         employee_repo.get_by_id(db, instance.employee_id) if instance.employee_id else None
     )
@@ -179,9 +229,14 @@ def _recommend_access_package(
             fallback_output={"requires_human_review": True},
         )
 
+    # Logged for audit purposes only (Principle 4) — deliberately not what
+    # gets sent to the model; see the loop below for that.
     input_summary = (
-        f"job_title={employee.job_title!r}, department={employee.department.name!r}, "
-        f"employment_type={employee.employment_type.value!r}"
+        f"employee_id={employee.id}, job_title={employee.job_title!r}, "
+        f"department={employee.department.name!r}, employment_type="
+        f"{employee.employment_type.value!r} (looked up again by the AI "
+        "agent itself via MCP's lookup_employee — see this step's "
+        "MCPToolExecution rows)"
     )
 
     try:
@@ -189,34 +244,27 @@ def _recommend_access_package(
         catalog_description = "\n".join(
             f"- {p.name} ({p.risk_level.value} risk): {p.description}" for p in packages
         )
-        completion = _client().chat.completions.parse(
-            model=settings.openai_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You recommend exactly one access package from a fixed catalog for a "
-                        "newly hired employee, based on their role. You must choose a package "
-                        "name that exists in the catalog below — never invent one. Be honest "
-                        "about your confidence: a role that maps clearly to one package "
-                        "deserves high confidence; an unusual or ambiguous title should get "
-                        "lower confidence so a human reviews it.\n\nCatalog:\n"
-                        f"{catalog_description}"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Employee: {employee.first_name} {employee.last_name}\n"
-                        f"Job title: {employee.job_title}\n"
-                        f"Department: {employee.department.name}\n"
-                        f"Employment type: {employee.employment_type.value}"
-                    ),
-                },
-            ],
-            response_format=response_model,
+        system_prompt = (
+            "You recommend exactly one access package from a fixed catalog for a "
+            "newly hired employee, based on their role. You are not told the "
+            "employee's job title or department up front — call lookup_employee "
+            "with the employee ID you're given to find out, then recommend. You "
+            "must choose a package name that exists in the catalog below — never "
+            "invent one. Be honest about your confidence: a role that maps "
+            "clearly to one package deserves high confidence; an unusual or "
+            "ambiguous title should get lower confidence so a human reviews "
+            f"it.\n\nCatalog:\n{catalog_description}"
         )
-        message = completion.choices[0].message
+        message, tokens_used = _run_recommendation_conversation(
+            db,
+            client=_client(),
+            model=settings.openai_model,
+            response_model=response_model,
+            system_prompt=system_prompt,
+            employee_id=employee.id,
+            instance=instance,
+            step_row=step_row,
+        )
         if message.refusal or message.parsed is None:
             return _fail(
                 db,
@@ -225,7 +273,11 @@ def _recommend_access_package(
                 task_type=task_type,
                 input_summary=input_summary,
                 model_used=settings.openai_model,
-                error_message=message.refusal or "Model returned no parseable response.",
+                error_message=(
+                    message.refusal
+                    or f"Model returned no parseable response after {_MAX_TOOL_ROUNDS} "
+                    "tool-calling round(s)."
+                ),
                 fallback_output={"requires_human_review": True},
             )
         # .model_dump() rather than attribute access: response_model is
@@ -269,11 +321,145 @@ def _recommend_access_package(
         confidence_score=confidence_score,
         requires_human_review=requires_human_review,
         model_used=settings.openai_model,
-        tokens_used=completion.usage.total_tokens if completion.usage else None,
+        tokens_used=tokens_used,
         status=AIExecutionStatus.COMPLETED,
         error_message=None,
     )
     return AIActionResult(status="completed", output_data=output_data)
+
+
+def _run_recommendation_conversation(
+    db: Session,
+    *,
+    client: OpenAI,
+    model: str,
+    response_model: type[BaseModel],
+    system_prompt: str,
+    employee_id: uuid.UUID,
+    instance: WorkflowInstance,
+    step_row: WorkflowStepInstance,
+) -> tuple[Any, int]:
+    """Runs the bounded tool-calling loop and returns (final_message,
+    total_tokens_used_across_all_rounds). The model is only given the
+    employee's ID; it must call lookup_employee (over MCP) to learn their
+    job title/department/employment type before it can answer — see the
+    module docstring for why this is deliberately not pre-fetched into the
+    prompt. If the model hasn't produced a final parsed answer within
+    _MAX_TOOL_ROUNDS, the last message returned here still has
+    tool_calls set and .parsed is None; the caller's existing "no
+    parseable response" branch handles that the same as a refusal.
+    """
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                f"Employee ID: {employee_id}\n\n"
+                "Call lookup_employee with this ID to get the employee's job "
+                "title, department, and employment type, then recommend one "
+                "access package."
+            ),
+        },
+    ]
+
+    total_tokens = 0
+    message: Any = None
+    for _ in range(_MAX_TOOL_ROUNDS):
+        completion = client.chat.completions.parse(
+            model=model,
+            # `messages` and `tools` are built as plain dicts matching the
+            # OpenAI API's own wire format exactly (see the literal message/
+            # tool-schema construction above and in _LOOKUP_EMPLOYEE_TOOL_
+            # SCHEMA) rather than the SDK's TypedDict unions — mypy can't
+            # prove a runtime-built dict satisfies one of those TypedDicts
+            # structurally, the same class of limitation as
+            # _build_recommendation_model's dynamic Literal above. Correct
+            # at runtime; not worth importing and hand-matching the SDK's
+            # exact TypedDict names here for two call sites.
+            messages=messages,  # type: ignore[arg-type]
+            tools=[_LOOKUP_EMPLOYEE_TOOL_SCHEMA],  # type: ignore[list-item]
+            response_format=response_model,
+        )
+        if completion.usage:
+            total_tokens += completion.usage.total_tokens
+        message = completion.choices[0].message
+
+        if not message.tool_calls:
+            return message, total_tokens
+
+        # Echo the assistant's own message back as a plain dict (matching
+        # every other entry in `messages`), not the SDK response object
+        # itself — same "don't assume an SDK object round-trips cleanly"
+        # caution as mcp_client.py's version-drift notes, applied
+        # defensively here even though this specific mechanic hasn't hit a
+        # concrete bug yet.
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments,
+                        },
+                    }
+                    for tool_call in message.tool_calls
+                ],
+            }
+        )
+        for tool_call in message.tool_calls:
+            tool_result = _execute_tool_call(
+                db, tool_call=tool_call, instance=instance, step_row=step_row
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result),
+                }
+            )
+
+    return message, total_tokens
+
+
+def _execute_tool_call(
+    db: Session,
+    *,
+    tool_call: Any,
+    instance: WorkflowInstance,
+    step_row: WorkflowStepInstance,
+) -> dict[str, Any]:
+    """Only one tool is ever offered to the model right now
+    (lookup_employee) — dispatching on name here, rather than calling
+    mcp_client directly inline in the loop above, means a second
+    AI-callable tool later is a new branch here, not a rewrite of the
+    loop."""
+    if tool_call.function.name != "lookup_employee":
+        return {"error": f"unknown tool: {tool_call.function.name!r}"}
+    try:
+        arguments = json.loads(tool_call.function.arguments)
+    except json.JSONDecodeError:
+        return {"error": "model returned malformed tool-call arguments"}
+    try:
+        return mcp_client.call_tool(
+            db,
+            tool_name="lookup_employee",
+            arguments=arguments,
+            caller=MCPToolCaller.AI_AGENT,
+            workflow_instance_id=instance.id,
+            step_instance_id=step_row.id,
+        )
+    except MCPToolError as exc:
+        # Fed back to the model as a tool result, not raised — a failed
+        # lookup is something the model itself can react to (e.g. answer
+        # with low confidence and missing_information populated), the same
+        # as it would see from any other tool-calling API. mcp_client.py
+        # has already written the failed MCPToolExecution audit row by the
+        # time this exception reaches here.
+        return {"error": str(exc)}
 
 
 def _summarize_justification(
