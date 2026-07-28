@@ -47,6 +47,8 @@ DISALLOWED_STEP_TRANSITIONS = [
     (StepStatus.REJECTED, StepStatus.COMPLETED),
     (StepStatus.PENDING, StepStatus.COMPLETED),
     (StepStatus.WAITING_APPROVAL, StepStatus.RUNNING),
+    (StepStatus.WAITING_EXTERNAL, StepStatus.RUNNING),
+    (StepStatus.WAITING_EXTERNAL, StepStatus.FAILED),
 ]
 
 

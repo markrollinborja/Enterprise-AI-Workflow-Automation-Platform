@@ -25,6 +25,17 @@ class InvalidTokenError(AppError):
     status_code = 401
 
 
+class InvalidWebhookSignatureError(AppError):
+    """Raised by api/routes/webhooks.py for any request that can't be
+    verified as genuinely coming from Jira — a missing/mismatched HMAC
+    signature, or the webhook secret not being configured at all. Both
+    cases return the same 401 deliberately: an attacker probing the
+    endpoint shouldn't be able to tell "wrong signature" apart from
+    "not configured" from the response alone."""
+
+    status_code = 401
+
+
 class PermissionDeniedError(AppError):
     status_code = 403
 

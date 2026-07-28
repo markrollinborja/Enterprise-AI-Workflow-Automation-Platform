@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     google_calendar_credentials_json: str = ""
 
+    # Shared secret configured on the Jira webhook (ADR-0010) — the
+    # webhook route rejects any request whose HMAC-SHA256 signature doesn't
+    # match, and refuses to run at all if this is blank (see
+    # api/routes/webhooks.py). Blank by default: mock-mode demos never
+    # register a real Jira webhook, so this route simply never gets called
+    # in that setup.
+    jira_webhook_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

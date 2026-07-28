@@ -81,11 +81,21 @@ class StepStatus(str, enum.Enum):
     docs/architecture/workflow-state-model.md. A step's FAILED is terminal
     for that step, but whether the *workflow* fails, continues, or retries
     is a per-step `failure_behavior` decision read from definition_json, not
-    encoded here."""
+    encoded here.
+
+    WAITING_EXTERNAL (Phase 10 checkpoint 3, ADR-0010): a mcp_tool step
+    whose Jira ticket was created successfully but whose real-world
+    completion hasn't been confirmed yet — mirrors InstanceStatus's own
+    waiting_external, which workflow-state-model.md documented from Phase 1
+    as covering both "retry backoff" and "awaiting async result." Only
+    reachable when the step's definition sets awaits_fulfillment=true (see
+    StepDefinition); every other mcp_tool step still goes straight to
+    COMPLETED on success, same as before."""
 
     PENDING = "pending"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
+    WAITING_EXTERNAL = "waiting_external"
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"

@@ -143,6 +143,12 @@ class WorkflowStepInstance(Base):
     input_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     output_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # The Jira issue key (e.g. "ONB-1234") once this step's create_jira_task
+    # call succeeds, for steps that await fulfillment confirmation (ADR-0010,
+    # Phase 10 checkpoint 3) — what /webhooks/jira looks a step up by. Not
+    # unique: mock mode's fake issue keys aren't guaranteed globally unique
+    # (see mcp_server/app/tools/jira.py), only real Jira Cloud keys are.
+    external_ref: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

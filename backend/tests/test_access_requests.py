@@ -1,8 +1,10 @@
 """Covers Phase 8's actual new surface: the rules engine composed with the
 workflow engine through the real /access-requests route and service — not
 just the pure-function rules tests in test_rules.py. Confirms the two
-demoable branches end to end: a LOW-risk request auto-approves and runs to
-completion with no human in the loop, while a HIGH-risk request correctly
+demoable branches end to end: a LOW-risk request auto-approves with no
+human in the loop and runs straight to its fulfillment pause (ADR-0010 —
+create_fulfillment_task awaits a real Jira webhook, see
+test_jira_webhook.py, not this file), while a HIGH-risk request correctly
 skips auto-approval and pauses at manager_approval, same as onboarding's
 approval pause.
 """
@@ -111,10 +113,13 @@ def test_low_risk_request_is_auto_approved_and_runs_to_completion(db_session: Se
     assert response.computed_risk_level == RiskLevel.LOW
     assert response.auto_approved is True
     # No approval step ever paused it, and the (mocked, per conftest.py's
-    # autouse MCP fixture) mcp_tool steps always succeed — the instance
-    # should run straight through to completion with zero human involvement.
-    assert response.status == InstanceStatus.COMPLETED
-    assert response.current_step_key is None
+    # autouse MCP fixture) mcp_tool steps always succeed — but
+    # create_fulfillment_task awaits fulfillment confirmation (ADR-0010),
+    # so "zero human involvement" now means "runs straight through to the
+    # fulfillment pause," not all the way to completed without any
+    # external signal at all.
+    assert response.status == InstanceStatus.WAITING_EXTERNAL
+    assert response.current_step_key == "create_fulfillment_task"
 
 
 def test_high_risk_request_is_not_auto_approved_and_waits_on_manager(
@@ -192,5 +197,9 @@ def test_route_full_round_trip_auto_approves_low_risk(
     body = response.json()
     assert body["auto_approved"] is True
     assert body["computed_risk_level"] == "low"
-    assert body["status"] == "completed"
+    # Not "completed" — create_fulfillment_task awaits a real Jira
+    # fulfillment confirmation now (ADR-0010); the full completion path
+    # (via the signature-verified webhook) is test_jira_webhook.py's job,
+    # not this route-level round-trip test's.
+    assert body["status"] == "waiting_external"
     assert body["application_name"] == application.name

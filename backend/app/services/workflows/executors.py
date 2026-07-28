@@ -47,6 +47,13 @@ class StepExecutionResult:
     status: Literal["completed", "failed"]
     output_data: dict[str, Any] | None = None
     error_message: str | None = None
+    # Set only by execute_mcp_tool, only when step_def.awaits_fulfillment is
+    # true and the call succeeded (ADR-0010, Phase 10 checkpoint 3): the
+    # Jira issue key /webhooks/jira will later look this step up by.
+    # service.py's _apply_step_result reads this to decide WAITING_EXTERNAL
+    # vs. COMPLETED — every other step type/config leaves this None and
+    # behaves exactly as before.
+    awaiting_external_ref: str | None = None
 
 
 class MCPArgumentError(Exception):
@@ -129,7 +136,10 @@ def execute_mcp_tool(
     except MCPToolError as exc:
         return StepExecutionResult(status="failed", error_message=str(exc))
 
-    return StepExecutionResult(status="completed", output_data=result)
+    awaiting_ref = result.get("issue_key") if step_def.awaits_fulfillment else None
+    return StepExecutionResult(
+        status="completed", output_data=result, awaiting_external_ref=awaiting_ref
+    )
 
 
 def _build_mcp_tool_arguments(

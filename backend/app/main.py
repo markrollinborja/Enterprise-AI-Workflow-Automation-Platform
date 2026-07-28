@@ -11,6 +11,7 @@ from app.api.routes import (
     employees,
     health,
     users,
+    webhooks,
 )
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -50,6 +51,7 @@ app.include_router(employees.router)
 app.include_router(approvals.router)
 app.include_router(applications.router)
 app.include_router(access_requests.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/")

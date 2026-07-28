@@ -24,6 +24,22 @@ def list_for_instance(db: Session, workflow_instance_id: UUID) -> list[WorkflowS
     )
 
 
+def get_by_external_ref(db: Session, external_ref: str) -> WorkflowStepInstance | None:
+    """What api/routes/webhooks.py looks a step up by — external_ref isn't
+    unique at the DB level (see the column's own comment), so this returns
+    the most recently created match. In practice a collision only matters
+    if two *currently open* WAITING_EXTERNAL steps ever shared a key, which
+    mock mode's low-collision-probability key generator makes exceedingly
+    unlikely at this project's demo scale, and real Jira Cloud keys are
+    genuinely unique — not worth a more defensive query for V1."""
+    return db.scalars(
+        select(WorkflowStepInstance)
+        .where(WorkflowStepInstance.external_ref == external_ref)
+        .order_by(WorkflowStepInstance.created_at.desc())
+        .limit(1)
+    ).first()
+
+
 def create(db: Session, **fields: Any) -> WorkflowStepInstance:
     step = WorkflowStepInstance(**fields)
     db.add(step)

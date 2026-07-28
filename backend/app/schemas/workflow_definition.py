@@ -51,6 +51,13 @@ class StepDefinition(BaseModel):
     # mcp_tool only: the tool name the engine calls (see
     # docs/architecture/mcp-architecture.md for the registered tool names).
     mcp_tool: str | None = None
+    # mcp_tool + create_jira_task only (ADR-0010, Phase 10 checkpoint 3):
+    # when true, a successful call doesn't complete this step — it moves to
+    # WAITING_EXTERNAL holding the created issue's key, and only reaches
+    # COMPLETED once /webhooks/jira confirms that issue transitioned to
+    # Done. False (the default) preserves every other mcp_tool step's
+    # existing behavior: success completes the step immediately.
+    awaits_fulfillment: bool = False
     failure_behavior: FailureBehavior = FailureBehavior.FAIL_WORKFLOW
     # Only meaningful when failure_behavior == retry.
     max_attempts: int = Field(default=1, ge=1)
@@ -66,6 +73,12 @@ class StepDefinition(BaseModel):
         if self.failure_behavior == FailureBehavior.RETRY and self.max_attempts <= 1:
             raise ValueError(
                 f"step '{self.key}': failure_behavior=retry needs max_attempts > 1"
+            )
+        if self.awaits_fulfillment and self.mcp_tool != "create_jira_task":
+            raise ValueError(
+                f"step '{self.key}': awaits_fulfillment is only meaningful for "
+                "mcp_tool='create_jira_task' (its output is the only one carrying "
+                "an issue_key to correlate a webhook against)"
             )
         return self
 

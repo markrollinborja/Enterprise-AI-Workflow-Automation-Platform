@@ -40,7 +40,7 @@ stateDiagram-v2
 
 ## WorkflowStepInstance states
 
-`pending, running, waiting_approval, completed, failed, skipped, rejected`
+`pending, running, waiting_approval, waiting_external, completed, failed, skipped, rejected`
 
 ```mermaid
 stateDiagram-v2
@@ -51,10 +51,12 @@ stateDiagram-v2
     running --> completed: step succeeded
     running --> failed: step errored, no retries left
     running --> waiting_approval: step type = approval
+    running --> waiting_external: mcp_tool step flagged awaits_fulfillment, call succeeded
     running --> pending: transient failure, retry scheduled (attempt_count += 1)
 
     waiting_approval --> completed: approval decision = approved
     waiting_approval --> rejected: approval decision = rejected
+    waiting_external --> completed: /webhooks/jira confirms fulfillment
 
     completed --> [*]
     failed --> [*]
@@ -63,6 +65,8 @@ stateDiagram-v2
 ```
 
 A step's `failed` is terminal *for that step*, but the workflow engine's reaction depends on step config (`failure_behavior: retry | fail_workflow | continue`) defined per-step in the workflow definition JSON — see [ADR-0003](../decisions/0003-json-workflow-definitions.md). A step retry doesn't create a new row; it increments `attempt_count` and re-enters `pending` on the same `WorkflowStepInstance`, which is also how the audit trail shows "both attempts" for the integration-failure demo scenario.
+
+**`waiting_external` (Phase 10 checkpoint 3, [ADR-0010](../decisions/0010-jira-fulfillment-confirmation-via-webhook.md))** — mirrors `WorkflowInstance`'s own `waiting_external`, which this doc documented from Phase 1 as covering both "retry backoff" and "awaiting async result"; this is the step-level state for the second case. Only `create_it_tasks` and `create_fulfillment_task` (both `mcp_tool` steps calling `create_jira_task`, flagged `awaits_fulfillment: true`) ever reach it — every other `mcp_tool` step still goes `running -> completed` directly on success, unchanged. `services/workflows/service.py::confirm_external_completion` is the resume half, called from `api/routes/webhooks.py` once a signature-verified Jira webhook reports the issue reached "Done"; any other status update on a tracked issue is acknowledged and ignored (V1 scope: only completion is modeled, not cancellation/escalation).
 
 ## Idempotency and duplicate-event protection
 

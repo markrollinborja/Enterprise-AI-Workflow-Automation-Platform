@@ -33,7 +33,12 @@ from app.models.enums import EmployeeStatus, EmploymentType, InstanceStatus, Ris
 from app.models.workflow import WorkflowInstance
 from app.repositories import access_package_repo, department_repo, employee_repo
 from app.services.workflows.definition_loader import load_all_definitions
-from app.services.workflows.service import advance_workflow, resume_workflow_step, start_workflow
+from app.services.workflows.service import (
+    advance_workflow,
+    confirm_external_completion,
+    resume_workflow_step,
+    start_workflow,
+)
 from app.workers.runner import poll_once
 
 
@@ -44,6 +49,17 @@ def _load_definitions(db_session: Session) -> None:
 
 def _step(instance, key: str):
     return next(s for s in instance.step_instances if s.step_key == key)
+
+
+def _confirm_fulfillment(db: Session, instance, step_key: str):
+    """Stands in for the real /webhooks/jira delivery (see
+    test_jira_webhook.py for that) — this file is about engine mechanics,
+    the same division of concern _mock_recommendation's docstring already
+    draws for the AI service."""
+    step_row = _step(instance, step_key)
+    assert step_row.status == StepStatus.WAITING_EXTERNAL
+    assert step_row.external_ref is not None
+    return confirm_external_completion(db, instance, step_row)
 
 
 def _new_hire_with_package(db: Session) -> tuple[Employee, str]:
@@ -154,6 +170,20 @@ def test_onboarding_happy_path_completes_after_both_approvals(
         db_session, instance, _step(instance, "it_review_access"), decision="approved"
     )
 
+    # create_it_tasks succeeded (mocked create_jira_task) but awaits
+    # fulfillment (ADR-0010) — it pauses holding the issue key instead of
+    # completing outright, same as an approval pause.
+    assert instance.status == InstanceStatus.WAITING_EXTERNAL
+    assert _step(instance, "create_it_tasks").status == StepStatus.WAITING_EXTERNAL
+    # conftest.py's autouse MCP mock returns a fixed "MOCK-1001" issue key
+    # for every create_jira_task call, regardless of project_key — unlike
+    # mcp_server's own real mock mode (see mcp_server/app/tools/jira.py),
+    # which builds a project-key-prefixed key. This just proves the engine
+    # captured whatever the tool returned into external_ref.
+    assert _step(instance, "create_it_tasks").external_ref == "MOCK-1001"
+
+    instance = _confirm_fulfillment(db_session, instance, "create_it_tasks")
+
     assert instance.status == InstanceStatus.COMPLETED
     assert instance.completed_at is not None
     # Phase 10: these are real mcp_tool steps now — output_data is whatever
@@ -162,7 +192,8 @@ def test_onboarding_happy_path_completes_after_both_approvals(
     assert _step(instance, "create_it_tasks").output_data["status"] == "created"
     assert _step(instance, "schedule_orientation").output_data["status"] == "scheduled"
     assert _step(instance, "notify_slack").output_data["status"] == "sent"
-    for key in ("create_it_tasks", "schedule_orientation", "notify_slack"):
+    assert _step(instance, "create_it_tasks").status == StepStatus.COMPLETED
+    for key in ("schedule_orientation", "notify_slack"):
         assert _step(instance, key).status == StepStatus.COMPLETED
 
 
@@ -206,10 +237,14 @@ def test_high_confidence_recommendation_skips_it_review_step(
     )
 
     # No second approval pause this time — it_review_access's condition is
-    # false, so the engine skips straight through to the mcp_tool steps.
-    assert instance.status == InstanceStatus.COMPLETED
+    # false, so the engine skips straight through to the mcp_tool steps,
+    # pausing again only at create_it_tasks's fulfillment wait (ADR-0010).
+    assert instance.status == InstanceStatus.WAITING_EXTERNAL
     assert _step(instance, "recommend_access").output_data["requires_human_review"] is False
     assert _step(instance, "it_review_access").status == StepStatus.SKIPPED
+
+    instance = _confirm_fulfillment(db_session, instance, "create_it_tasks")
+    assert instance.status == InstanceStatus.COMPLETED
 
 
 def test_mcp_tool_failure_retries_then_recovers(
@@ -252,10 +287,20 @@ def test_mcp_tool_failure_retries_then_recovers(
 
     instance = advance_workflow(db_session, instance)
 
-    assert instance.status == InstanceStatus.COMPLETED
+    # The retry succeeded, but create_it_tasks awaits fulfillment
+    # (ADR-0010) — recovering from the transient failure moves it to
+    # WAITING_EXTERNAL (holding the new issue key), not straight to
+    # COMPLETED. Confirming fulfillment finishes the demo scenario: two
+    # attempts on one row, then a real completion.
+    assert instance.status == InstanceStatus.WAITING_EXTERNAL
     failing_step = _step(instance, "create_it_tasks")
-    assert failing_step.status == StepStatus.COMPLETED
+    assert failing_step.status == StepStatus.WAITING_EXTERNAL
     assert failing_step.attempt_count == 2
+    assert failing_step.external_ref is not None
+
+    instance = _confirm_fulfillment(db_session, instance, "create_it_tasks")
+    assert instance.status == InstanceStatus.COMPLETED
+    assert _step(instance, "create_it_tasks").status == StepStatus.COMPLETED
 
 
 def test_mcp_tool_retries_exhausted_fails_the_workflow(
@@ -312,6 +357,11 @@ def test_mcp_tool_continue_failure_behavior_does_not_fail_the_workflow(
     instance = resume_workflow_step(
         db_session, instance, _step(instance, "manager_approval"), decision="approved"
     )
+
+    # create_it_tasks succeeded (not force-failed in this test) but still
+    # pauses for fulfillment (ADR-0010) before the engine ever reaches
+    # notify_slack — confirm it to let the rest of the workflow run.
+    instance = _confirm_fulfillment(db_session, instance, "create_it_tasks")
 
     # notify_slack's failure_behavior is "continue" — it fails permanently
     # (no retry configured for it), but the workflow still completes rather
@@ -411,4 +461,16 @@ def test_worker_poll_advances_a_due_retry(
     db_session.expire_all()
     refreshed = db_session.get(WorkflowInstance, instance.id)
     assert refreshed is not None
+    # The worker recovered the due retry (create_it_tasks succeeded on
+    # attempt 2), but that step awaits fulfillment (ADR-0010) — the
+    # instance is back in waiting_external for a different reason than it
+    # started this test with (confirmation, not backoff). Confirming it
+    # closes the loop this test is really about: worker-driven retry
+    # recovery composing correctly with the fulfillment pause.
+    assert refreshed.status == InstanceStatus.WAITING_EXTERNAL
+    refreshed_step = _step(refreshed, "create_it_tasks")
+    assert refreshed_step.status == StepStatus.WAITING_EXTERNAL
+    assert refreshed_step.attempt_count == 2
+
+    refreshed = _confirm_fulfillment(db_session, refreshed, "create_it_tasks")
     assert refreshed.status == InstanceStatus.COMPLETED

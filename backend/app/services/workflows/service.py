@@ -158,6 +158,16 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
             # Waiting on a human, or already rejected (instance should
             # already be terminal in the latter case) — nothing to advance.
             return instance
+        if step_row.status == StepStatus.WAITING_EXTERNAL:
+            # Waiting on a Jira fulfillment webhook (ADR-0010) — nothing to
+            # advance until confirm_external_completion resumes this step
+            # directly. Not reachable via the worker's own poll query today
+            # (list_ready_to_advance only selects PENDING-with-due-
+            # scheduled_at steps for its waiting_external case), but this
+            # guard is what makes that true by design rather than by
+            # accident if a future caller ever calls advance_workflow on
+            # such an instance.
+            return instance
         if step_row.status == StepStatus.FAILED:
             # Reached via failure_behavior=continue on an earlier pass —
             # already resolved (permanently failed, not retried), move on.
@@ -311,6 +321,16 @@ def _apply_step_result(
 ) -> None:
     if result.status == "completed":
         step_row.output_data = result.output_data
+        if result.awaiting_external_ref:
+            # ADR-0010: a successful create_jira_task call on a step flagged
+            # awaits_fulfillment doesn't complete the step yet — it pauses,
+            # holding the issue key, until /webhooks/jira confirms the
+            # ticket reached Done (see confirm_external_completion below).
+            step_row.external_ref = result.awaiting_external_ref
+            transition_step(step_row, StepStatus.WAITING_EXTERNAL)
+            transition_instance(instance, InstanceStatus.WAITING_EXTERNAL)
+            db.commit()
+            return
         step_row.completed_at = _utcnow()
         transition_step(step_row, StepStatus.COMPLETED)
         db.commit()
@@ -384,3 +404,37 @@ def resume_workflow_step(
     instance.completed_at = _utcnow()
     db.commit()
     return instance
+
+
+def confirm_external_completion(
+    db: Session, instance: WorkflowInstance, step_row: WorkflowStepInstance
+) -> WorkflowInstance:
+    """The fulfillment counterpart to resume_workflow_step (ADR-0010): called
+    by api/routes/webhooks.py once a Jira webhook confirms the issue this
+    step created reached Done. Same pause/resume shape as an approval —
+    step and instance both come out of a waiting state and the engine
+    advances to whatever's next — just triggered by an external system
+    event instead of a human decision.
+
+    Raises ConflictError if this step isn't currently WAITING_EXTERNAL,
+    which is also this function's idempotency guard: the webhook route
+    checks step status itself before calling this (so a duplicate Jira
+    delivery gets a benign 200, not a 409 that trains Jira to keep
+    retrying) — this raise is a defense-in-depth backstop for any other
+    caller, not the primary duplicate-delivery handling.
+    """
+    if step_row.status != StepStatus.WAITING_EXTERNAL or instance.status != (
+        InstanceStatus.WAITING_EXTERNAL
+    ):
+        raise ConflictError(
+            "This step is not currently waiting on an external fulfillment "
+            f"confirmation (step status: {step_row.status.value}, instance "
+            f"status: {instance.status.value})."
+        )
+
+    step_row.output_data = {**(step_row.output_data or {}), "fulfillment_confirmed": True}
+    step_row.completed_at = _utcnow()
+    transition_step(step_row, StepStatus.COMPLETED)
+    transition_instance(instance, InstanceStatus.RUNNING)
+    db.commit()
+    return advance_workflow(db, instance)

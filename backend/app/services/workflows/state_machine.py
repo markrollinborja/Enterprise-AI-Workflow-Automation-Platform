@@ -54,11 +54,20 @@ STEP_TRANSITIONS: dict[StepStatus, set[StepStatus]] = {
         StepStatus.COMPLETED,
         StepStatus.FAILED,
         StepStatus.WAITING_APPROVAL,
+        # A successful mcp_tool call on a step flagged awaits_fulfillment
+        # (ADR-0010, Phase 10 checkpoint 3) — the Jira ticket exists but
+        # isn't confirmed done yet.
+        StepStatus.WAITING_EXTERNAL,
         # Transient failure with retries left re-enters PENDING on the same
         # row (attempt_count += 1) rather than creating a new one.
         StepStatus.PENDING,
     },
     StepStatus.WAITING_APPROVAL: {StepStatus.COMPLETED, StepStatus.REJECTED},
+    # Only COMPLETED for V1 — /webhooks/jira only reacts to the ticket
+    # reaching "Done" (see the route's docstring). Treating some other
+    # Jira status transition as a step failure is a real V2 feature
+    # (escalation/cancellation semantics), not a gap in this table.
+    StepStatus.WAITING_EXTERNAL: {StepStatus.COMPLETED},
     # Terminal for that step. Whether the *workflow* fails, continues, or
     # retries from here is a definition-level failure_behavior decision the
     # Phase 6 engine makes — not something this table encodes.
