@@ -2,18 +2,23 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchWorkflowInstances, type WorkflowInstanceSummaryResponse } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
 
+// Shared across every status vocabulary in this app (instance, step,
+// approval) — a status this map doesn't recognize just falls back to plain
+// slate rather than needing its own map per vocabulary.
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-slate-100 text-slate-700',
   running: 'bg-blue-100 text-blue-800',
   waiting_approval: 'bg-amber-100 text-amber-800',
   waiting_external: 'bg-amber-100 text-amber-800',
+  approved: 'bg-green-100 text-green-800',
   completed: 'bg-green-100 text-green-800',
+  skipped: 'bg-slate-200 text-slate-600',
   failed: 'bg-red-100 text-red-800',
   rejected: 'bg-red-100 text-red-800',
   cancelled: 'bg-slate-200 text-slate-600',
 }
 
-function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: { status: string }) {
   const className = STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-700'
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>

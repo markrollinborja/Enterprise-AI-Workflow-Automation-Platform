@@ -5,13 +5,18 @@ import { EmployeeDirectory } from './components/EmployeeDirectory'
 import { ApprovalInbox } from './components/ApprovalInbox'
 import { DashboardOverview } from './components/DashboardOverview'
 import { WorkflowInstanceList } from './components/WorkflowInstanceList'
+import { WorkflowDetail } from './components/WorkflowDetail'
 
 // Plain state-based view switching, not react-router-dom — this project's
 // dashboard is a handful of admin-only screens behind one login, not an app
 // that needs deep-linkable/bookmarkable URLs. Revisit if that ever becomes
 // a real requirement (see docs/architecture for the tradeoff written up in
 // full during Phase 12).
-type View = 'home' | 'overview' | 'workflows'
+type View = 'home' | 'overview' | 'workflows' | 'failed' | 'workflow-detail'
+
+// 'workflows' and 'failed' both open the same WorkflowDetail on row click —
+// this remembers which list to return to on "Back" instead of hardcoding it.
+type ListView = 'workflows' | 'failed'
 
 function TabButton({
   active,
@@ -39,9 +44,17 @@ function TabButton({
 function AuthenticatedView() {
   const { user, logout } = useAuth()
   const [view, setView] = useState<View>('home')
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
+  const [detailOrigin, setDetailOrigin] = useState<ListView>('workflows')
   if (!user) return null
 
   const isAdmin = user.role === 'administrator'
+
+  function openDetail(id: string, origin: ListView) {
+    setSelectedInstanceId(id)
+    setDetailOrigin(origin)
+    setView('workflow-detail')
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -78,13 +91,32 @@ function AuthenticatedView() {
             <TabButton active={view === 'workflows'} onClick={() => setView('workflows')}>
               Workflows
             </TabButton>
+            <TabButton active={view === 'failed'} onClick={() => setView('failed')}>
+              Failed Workflows
+            </TabButton>
           </nav>
         )}
 
         <div className="mt-6">
           {view === 'overview' && isAdmin && <DashboardOverview />}
 
-          {view === 'workflows' && isAdmin && <WorkflowInstanceList />}
+          {view === 'workflows' && isAdmin && (
+            <WorkflowInstanceList onSelectInstance={(id) => openDetail(id, 'workflows')} />
+          )}
+
+          {view === 'failed' && isAdmin && (
+            <WorkflowInstanceList
+              fixedStatus="failed"
+              onSelectInstance={(id) => openDetail(id, 'failed')}
+            />
+          )}
+
+          {view === 'workflow-detail' && isAdmin && selectedInstanceId && (
+            <WorkflowDetail
+              instanceId={selectedInstanceId}
+              onBack={() => setView(detailOrigin)}
+            />
+          )}
 
           {view === 'home' && (
             <>
