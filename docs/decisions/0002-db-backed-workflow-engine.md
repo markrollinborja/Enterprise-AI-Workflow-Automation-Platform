@@ -8,6 +8,6 @@
 
 **Alternatives considered:** Celery/RQ + Redis — rejected for V1: adds a broker as a sixth moving part and its own failure modes, for throughput this project will never approach. Temporal — genuinely the "right" tool for pausable/resumable workflows at real scale, but too much infrastructure to justify for a solo V1; documented as the explicit upgrade path if this needed production throughput.
 
-**Consequences:** State and queue can never disagree (same DB, same transaction boundary) — a class of bug broker-based systems have to specifically guard against. Tradeoff: polling latency (2-5s) instead of push-based dispatch, and no built-in horizontal fan-out — both acceptable at demo scale, and the row-locking approach (`SELECT ... FOR UPDATE SKIP LOCKED`) leaves room to add worker replicas later without a redesign.
+**Consequences:** State and queue can never disagree (same DB, same transaction boundary) — a class of bug broker-based systems have to specifically guard against. Tradeoff: polling latency (2-5s) instead of push-based dispatch, and no built-in horizontal fan-out — both acceptable at demo scale. Locking a candidate instance while it's being advanced turned out to need a Postgres session-level advisory lock, not `SELECT ... FOR UPDATE` as originally assumed here — see [ADR-0013](./0013-advisory-lock-for-workflow-advancement.md) for why, and for what that means for adding worker replicas later.
 
 **See also:** [background-jobs.md](../architecture/background-jobs.md)

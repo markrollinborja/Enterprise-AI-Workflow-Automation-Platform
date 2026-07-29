@@ -180,3 +180,7 @@ export function fetchWorkflowInstanceDetail(
 ): Promise<WorkflowInstanceDetailResponse> {
   return getJson<WorkflowInstanceDetailResponse>(`/workflow-instances/${instanceId}`, token)
 }
+
+export function fetchAuditLog(token: string): Promise<AuditTimelineEntryResponse[]> {
+  return getJson<AuditTimelineEntryResponse[]>('/audit-log', token)
+}

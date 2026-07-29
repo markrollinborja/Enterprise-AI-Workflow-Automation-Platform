@@ -147,7 +147,9 @@ def test_notify_slack_failure_does_not_raise_and_records_failed_status(
 ) -> None:
     user = _create_user(db_session, email=f"u-{uuid.uuid4()}@cordant.io", role=UserRole.MANAGER)
 
-    async def _boom(server_url: str, tool_name: str, arguments: dict[str, object]) -> dict:
+    async def _boom(
+        server_url: str, tool_name: str, arguments: dict[str, object], timeout_seconds: float
+    ) -> dict:
         raise RuntimeError("mcp_server unreachable")
 
     monkeypatch.setattr("app.services.integrations.mcp_client._call_tool_async", _boom)

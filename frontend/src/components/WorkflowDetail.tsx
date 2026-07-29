@@ -3,13 +3,13 @@ import {
   fetchWorkflowInstanceDetail,
   type AIExecutionDetailResponse,
   type ApprovalDetailResponse,
-  type AuditTimelineEntryResponse,
   type MCPToolExecutionDetailResponse,
   type NotificationDetailResponse,
   type WorkflowInstanceDetailResponse,
   type WorkflowStepDetailResponse,
 } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
+import { AuditTimelineList } from './AuditTimeline'
 import { StatusBadge } from './WorkflowInstanceList'
 
 function formatDate(value: string | null): string {
@@ -190,34 +190,6 @@ function NotificationCard({ notification }: { notification: NotificationDetailRe
   )
 }
 
-const ACTOR_TYPE_STYLES: Record<string, string> = {
-  user: 'bg-blue-100 text-blue-800',
-  ai: 'bg-purple-100 text-purple-800',
-  system: 'bg-slate-100 text-slate-700',
-}
-
-function AuditTimelineRow({ entry }: { entry: AuditTimelineEntryResponse }) {
-  const actorClass = ACTOR_TYPE_STYLES[entry.actor_type] ?? 'bg-slate-100 text-slate-700'
-  const metadataEntries = Object.entries(entry.metadata).filter(([, v]) => v !== null && v !== '')
-  return (
-    <li className="border-l-2 border-slate-200 py-1 pl-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-400">{formatDate(entry.timestamp)}</span>
-        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${actorClass}`}>
-          {entry.actor}
-        </span>
-        <span className="text-sm text-slate-800">{entry.action.replace(/_/g, ' ')}</span>
-        <StatusBadge status={entry.outcome} />
-      </div>
-      {metadataEntries.length > 0 && (
-        <p className="mt-0.5 text-xs text-slate-500">
-          {metadataEntries.map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
-        </p>
-      )}
-    </li>
-  )
-}
-
 interface WorkflowDetailProps {
   instanceId: string
   onBack: () => void
@@ -314,13 +286,7 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
 
           <SectionCard title="Audit Timeline">
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <ul className="space-y-1">
-                {detail.audit_timeline.map((entry, index) => (
-                  // No stable id on a synthesized timeline entry — index is
-                  // fine, this list is never reordered or filtered in place.
-                  <AuditTimelineRow key={index} entry={entry} />
-                ))}
-              </ul>
+              <AuditTimelineList entries={detail.audit_timeline} />
             </div>
           </SectionCard>
         </>

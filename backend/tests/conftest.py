@@ -95,7 +95,7 @@ def _mock_mcp_client_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """
 
     async def fake_call_tool_async(
-        server_url: str, tool_name: str, arguments: dict[str, object]
+        server_url: str, tool_name: str, arguments: dict[str, object], timeout_seconds: float
     ) -> dict[str, object]:
         if tool_name not in _DEFAULT_MCP_TOOL_RESULTS:
             raise ValueError(f"no default mock result configured for MCP tool {tool_name!r}")

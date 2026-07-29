@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     # AI — see docs/architecture/mcp-architecture.md
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-nano"
+    # The openai SDK's own default is 600s (5s connect + up to 600s total,
+    # see openai._constants.DEFAULT_TIMEOUT) — far too generous for a
+    # single structured-output completion against a small catalog. A hang
+    # that long would sit well outside the engine's own retry/backoff
+    # window ([2, 8, 30]s) before the step ever gets a chance to fail and
+    # retry. 20s is deliberately tight for this project's call shape, not
+    # a general-purpose default (Phase 13, reliability hardening).
+    openai_timeout_seconds: float = 20.0
 
     # MCP — see app/services/integrations/mcp_client.py. The path suffix
     # matters: FastMCP's streamable-http transport mounts the protocol
@@ -54,6 +62,13 @@ class Settings(BaseSettings):
     # served at the bare root.
     mcp_server_url: str = "http://mcp_server:8100/mcp"
     mcp_mock_mode: bool = True
+    # The mcp SDK's streamablehttp_client already defaults to timeout=30s,
+    # so this isn't closing an unbounded gap — it's replacing an implicit
+    # library default with an explicit, intentional one. mcp_server is a
+    # same-Docker-network hop returning mock data instantly; 10s is
+    # generous for that and still fails fast enough to reach the engine's
+    # retry/backoff window instead of stalling a poll cycle (Phase 13).
+    mcp_call_timeout_seconds: float = 10.0
 
     # External integrations — mock mode defaults true, see docs/architecture/integration-strategy.md
     jira_base_url: str = ""

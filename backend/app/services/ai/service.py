@@ -146,7 +146,13 @@ def _build_recommendation_model(package_names: list[str]) -> type[BaseModel]:
 
 
 def _client() -> OpenAI:
-    return OpenAI(api_key=get_settings().openai_api_key)
+    settings = get_settings()
+    # Explicit timeout (Phase 13) — see Settings.openai_timeout_seconds for
+    # why the SDK's own 600s default is too generous here. A timeout here
+    # raises openai.APITimeoutError, which the existing except Exception
+    # blocks in this module already catch the same as any other OpenAI
+    # failure — no new error-handling path needed.
+    return OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
 
 
 def execute_ai_task(

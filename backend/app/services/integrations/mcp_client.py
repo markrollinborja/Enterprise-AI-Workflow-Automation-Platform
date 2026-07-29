@@ -77,7 +77,13 @@ def call_tool(
     settings = get_settings()
     started = time.monotonic()
     try:
-        result = anyio.run(_call_tool_async, settings.mcp_server_url, tool_name, arguments)
+        result = anyio.run(
+            _call_tool_async,
+            settings.mcp_server_url,
+            tool_name,
+            arguments,
+            settings.mcp_call_timeout_seconds,
+        )
     except Exception as exc:  # noqa: BLE001 — every failure here must be
         # logged and re-raised as MCPToolError, not swallowed or left as a
         # raw, uncategorized exception the caller wasn't written to expect.
@@ -115,9 +121,19 @@ def call_tool(
 
 
 async def _call_tool_async(
-    server_url: str, tool_name: str, arguments: dict[str, Any]
+    server_url: str, tool_name: str, arguments: dict[str, Any], timeout_seconds: float
 ) -> dict[str, Any]:
-    async with streamablehttp_client(server_url) as (read_stream, write_stream, _):
+    # `timeout` bounds regular request/response round trips (session init,
+    # the tool call itself); `sse_read_timeout` bounds how long the
+    # underlying stream will wait for a new server-sent event before
+    # disconnecting — left at the SDK's own 5-minute default since it's not
+    # what a hung tool call would actually block on here. See
+    # Settings.mcp_call_timeout_seconds for why 10s.
+    async with streamablehttp_client(server_url, timeout=timeout_seconds) as (
+        read_stream,
+        write_stream,
+        _,
+    ):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             result = await session.call_tool(tool_name, arguments)

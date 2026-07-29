@@ -74,11 +74,14 @@ def list_ready_to_advance(db: Session) -> list[WorkflowInstance]:
     worker also recovers anything left mid-flight by a crash) plus
     instances `waiting_external` whose retry-scheduled step is now due.
 
-    Not using SELECT ... FOR UPDATE SKIP LOCKED here (see ADR-0002) —
-    that's Phase 13 (Reliability) hardening for multi-replica safety; at
-    one worker replica, a plain read is correct and simpler, and
-    advance_workflow's own per-step commits are what make each step
-    durable regardless.
+    Plain read, no row locking — this query only decides which instances
+    are *candidates* to advance; the actual mutual exclusion (so this
+    doesn't race a concurrent API request's own inline `advance_workflow`
+    call on the same instance) happens per-instance via a Postgres
+    advisory lock in `services/workflows/service.py`'s
+    `try_advance_workflow` (Phase 13) — see that function's docstring for
+    why an advisory lock, not `SELECT ... FOR UPDATE`, was the fix this
+    needed.
     """
     running = db.scalars(
         select(WorkflowInstance).where(WorkflowInstance.status == InstanceStatus.RUNNING)

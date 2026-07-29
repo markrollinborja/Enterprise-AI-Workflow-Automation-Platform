@@ -1,6 +1,6 @@
 # Data Model
 
-Cut from the spec's suggested 19 tables to 16. Every cut and every addition is justified below — don't skip this section when reviewing, since the reasoning is the actual deliverable here, not just the table list.
+Cut from the spec's suggested 19 tables to 14. Every cut and every addition is justified below — don't skip this section when reviewing, since the reasoning is the actual deliverable here, not just the table list.
 
 ## Cuts from the original list
 
@@ -9,6 +9,8 @@ Cut from the spec's suggested 19 tables to 16. Every cut and every addition is j
 - **BusinessRule** — not a table. Rules are versioned Python functions/config in `services/rules`, covered by unit tests. A DB-editable rules table implies a rules-admin UI we're not building; storing them as code is simpler, more testable, and still demonstrates "rules separated from routing."
 - **IntegrationExecution** — merged into `MCPToolExecution`. Every external integration in this project (Jira, Slack, Calendar) is invoked *through* MCP — there's no integration that bypasses it — so a separate generic "integration" audit table would just duplicate `MCPToolExecution` row-for-row.
 - **IdempotencyKey** — merged into `WorkflowEvent.dedup_key` (unique constraint). The event that seeds a workflow instance *is* the idempotency boundary; a separate table for the same concept adds a join for no new capability.
+- **Task** — never built. The original sketch had this as generic internal checklist items ("IT: provision laptop"). By the time a V1 workflow actually needed that kind of item tracked, it already had a more specific home: an MCP-fulfilled action is a `WorkflowStepInstance` + `MCPToolExecution` row (Phase 10), and anything a human needs to act on is an `ApprovalRequest` (Phase 7). Nothing in either V1 workflow ever needed a checklist item that wasn't already one of those — a generic `Task` table would have been unused dead weight, not a real capability gap.
+- **AuditLog** — never built, by deliberate design (Phase 12), not an oversight. See `services/dashboard/service.py`'s module docstring: every event Principle 4 asks to be auditable is already a real row somewhere (`WorkflowEvent`, `ApprovalRequest`/`ApprovalDecision`, `AIExecution`, `MCPToolExecution`, `Notification`, plus `WorkflowInstance`'s own terminal status). `build_audit_timeline()` composes those into one chronological read-only feed instead of writing every event a second time to a dedicated table that would only ever be read back in the same order it was written — see `GET /audit-log` (global) and `GET /workflow-instances/{id}` (per-instance `audit_timeline` field), both admin-only. Known V1 scale limit documented there too: the global timeline merges each source's most recent rows independently rather than running one real cross-table query — fine at this project's demo scale, called out explicitly rather than presented as more scalable than it is.
 
 ## Addition beyond the original list
 
@@ -28,9 +30,7 @@ erDiagram
     WORKFLOW_EVENT |o--o| WORKFLOW_INSTANCE : triggers
     WORKFLOW_INSTANCE ||--o{ WORKFLOW_STEP_INSTANCE : contains
     WORKFLOW_INSTANCE }o--o| EMPLOYEE : concerns
-    WORKFLOW_INSTANCE ||--o{ TASK : produces
     WORKFLOW_INSTANCE ||--o{ NOTIFICATION : produces
-    WORKFLOW_INSTANCE ||--o{ AUDIT_LOG : produces
     WORKFLOW_INSTANCE ||--o{ MCP_TOOL_EXECUTION : produces
     WORKFLOW_INSTANCE ||--o{ AI_EXECUTION : produces
 
@@ -44,8 +44,9 @@ erDiagram
     APPLICATION ||--o{ WORKFLOW_INSTANCE : "referenced by (access requests)"
 
     USER ||--o{ NOTIFICATION : receives
-    USER ||--o{ AUDIT_LOG : "acts in"
 ```
+
+No `AUDIT_LOG` or `TASK` entities — see "Cuts from the original list" above. The Audit Log page (Phase 12) reads across `WORKFLOW_EVENT`, `APPROVAL_REQUEST`/`APPROVAL_DECISION`, `AI_EXECUTION`, `MCP_TOOL_EXECUTION`, and `NOTIFICATION` at query time; it isn't a table this diagram needs its own box for.
 
 ## Tables
 
@@ -73,14 +74,10 @@ erDiagram
 
 **ApprovalDecision** — `id, approval_request_id (FK), decided_by_user_id (FK), decision, notes, decided_at`. *(Built in Phase 7.)* Reuses the same `approval_request_status` enum as `ApprovalRequest.status` for the `decision` column (never stores `pending`) — one Postgres enum type, not two, since the values are identical.
 
-**Task** — `id, workflow_instance_id (FK), step_instance_id (FK, nullable), task_type, assigned_role, status, description, created_at, completed_at`. Internal checklist items (e.g. "IT: provision laptop") that aren't necessarily backed by an external MCP call.
-
 **MCPToolExecution** — `id, tool_name, caller (workflow_engine | ai_agent), workflow_instance_id (FK, nullable), step_instance_id (FK, nullable), input_params, output_result, status, mock_mode, duration_ms, error_message, created_at`. *(Built in Phase 10.)* The single audit table for every Jira/Slack/Calendar/employee-lookup call, from either caller (the workflow engine's `executors.py`, or the AI service's agentic tool-calling loop).
 
 **Notification** — `id, user_id (FK), workflow_instance_id (FK, nullable), type (approval_requested | workflow_completed | workflow_rejected), title, body, channel (in_app | slack | email), status (completed | failed), created_at, read_at (nullable)`. *(Built in Phase 11.)* One row per (event, channel) — an `APPROVAL_REQUESTED` notification that fires both in-app and Slack writes two rows, not one row listing multiple channels. `read_at` only ever set on `in_app` rows.
 
-**AuditLog** — `id, timestamp, actor_user_id (FK, nullable), actor_type (user | system | ai), action, resource_type, resource_id, workflow_instance_id (FK, nullable), outcome, metadata (JSON)`. `actor_user_id` is null for system/AI-originated events; `actor_type` disambiguates.
-
 ## What's NOT logged in metadata / what gets redacted
 
-`AuditLog.metadata`, `MCPToolExecution.input_params`/`output_result`, and `AIExecution.input_summary`/`output_json` must never contain: `personal_email`, `hashed_password`, raw JWTs, or API keys/tokens for Jira/Slack/Google/OpenAI. `AIExecution.input_summary` in particular is a deliberately short, hand-built description (job title/department, not a raw prompt) rather than the full request — see `services/ai/service.py` — precisely so a sensitive free-text field (an access-request justification, say) doesn't end up persisted in full by accident. Redaction happens at the point of writing the row (a helper in `services/audit` strips known-sensitive keys before persisting for `AuditLog`/`MCPToolExecution`), not as an afterthought at read time.
+`MCPToolExecution.input_params`/`output_result` and `AIExecution.input_summary`/`output_json` must never contain: `personal_email`, `hashed_password`, raw JWTs, or API keys/tokens for Jira/Slack/Google/OpenAI. `AIExecution.input_summary` in particular is a deliberately short, hand-built description (job title/department, not a raw prompt) rather than the full request — see `services/ai/service.py` — precisely so a sensitive free-text field (an access-request justification, say) doesn't end up persisted in full by accident. Redaction happens at the point of writing each source row, not at read time — and `build_audit_timeline()` (Phase 12) adds a second layer for free: its `metadata` dict per entry is hand-built from a small, named allowlist of fields (`tool_name`, `mock_mode`, `confidence_score`, `step_key`, and similar — see `services/dashboard/service.py`), never a wholesale dump of `output_json`/`output_result`/`input_params`. Even a field that somehow ended up unredacted in a source row wouldn't automatically surface on the Audit Log page.

@@ -28,16 +28,19 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.db.session import engine
 from app.models.employee import Employee
 from app.models.enums import EmployeeStatus, EmploymentType, InstanceStatus, RiskLevel, StepStatus
 from app.models.workflow import WorkflowInstance
 from app.repositories import access_package_repo, department_repo, employee_repo
+from app.services.workflows import service as workflow_service
 from app.services.workflows.definition_loader import load_all_definitions
 from app.services.workflows.service import (
     advance_workflow,
     confirm_external_completion,
     resume_workflow_step,
     start_workflow,
+    try_advance_workflow,
 )
 from app.workers.runner import poll_once
 
@@ -474,3 +477,39 @@ def test_worker_poll_advances_a_due_retry(
 
     refreshed = _confirm_fulfillment(db_session, refreshed, "create_it_tasks")
     assert refreshed.status == InstanceStatus.COMPLETED
+
+
+def test_try_advance_workflow_backs_off_when_another_session_holds_the_lock(
+    db_session: Session,
+) -> None:
+    """Phase 13, ADR-0013: reproduces the exact race that used to raise
+    InvalidTransitionError: Cannot transition from 'running' to 'running'
+    — the worker's poll loop grabbing an instance an API request's own
+    inline advance_workflow call was still mid-flight on. A second,
+    genuinely separate physical connection holding this instance's
+    advisory lock stands in for that in-flight API request (advisory
+    locks are tied to the physical backend connection, not a SQLAlchemy
+    Session — see advance_workflow's docstring — so this only proves
+    anything using a real second `engine.connect()`, not a second
+    Session sharing db_session's pooled connection). try_advance_workflow
+    (what the worker calls) must back off instead of racing it.
+    """
+    instance = start_workflow(
+        db_session,
+        workflow_key="employee_onboarding",
+        input_data={"employee_id": str(uuid.uuid4())},
+        dedup_key=f"test-lock-{uuid.uuid4()}",
+    )
+
+    with engine.connect() as other_conn:
+        workflow_service._acquire_instance_lock(other_conn, instance.id)
+        try:
+            # Blocked: the lock is held elsewhere, so this must not touch
+            # the instance at all, let alone raise.
+            assert try_advance_workflow(db_session, instance) is False
+        finally:
+            workflow_service._release_instance_lock(other_conn, instance.id)
+
+    # Once released, the same instance is advanceable again through the
+    # same non-blocking path.
+    assert try_advance_workflow(db_session, instance) is True

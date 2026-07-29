@@ -17,9 +17,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
+from sqlalchemy import text
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.db.session import engine
 from app.models.enums import (
     FailureBehavior,
     InstanceStatus,
@@ -163,7 +166,104 @@ def _notify_submitter(
     )
 
 
+def _acquire_instance_lock(conn: Connection, instance_id: UUID) -> None:
+    conn.execute(
+        text("SELECT pg_advisory_lock(hashtext(:key)::bigint)"), {"key": str(instance_id)}
+    )
+
+
+def _try_acquire_instance_lock(conn: Connection, instance_id: UUID) -> bool:
+    result = conn.execute(
+        text("SELECT pg_try_advisory_lock(hashtext(:key)::bigint)"), {"key": str(instance_id)}
+    )
+    return bool(result.scalar())
+
+
+def _release_instance_lock(conn: Connection, instance_id: UUID) -> None:
+    conn.execute(
+        text("SELECT pg_advisory_unlock(hashtext(:key)::bigint)"), {"key": str(instance_id)}
+    )
+
+
 def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstance:
+    """Blocking entry point for every synchronous caller (start_workflow,
+    resume_workflow_step, confirm_external_completion) — waits for, then
+    holds, a session-level Postgres advisory lock keyed by this instance's
+    id for the duration of the whole call, releasing it once
+    `_advance_workflow_locked` returns (or raises).
+
+    Why an advisory lock and not `SELECT ... FOR UPDATE` (Phase 13, per
+    ADR-0002's original note that row locking was the intended fix): this
+    function's actual critical section spans *multiple* `db.commit()`
+    calls (each step transition commits independently — see
+    `_advance_workflow_locked`'s docstring for why that's deliberate,
+    durability-wise). A row lock from `FOR UPDATE` releases at the very
+    first commit inside the loop, which is exactly the gap that let the
+    worker's poll and an API request's inline advance both grab the same
+    instance mid-flight (`InvalidTransitionError: Cannot transition from
+    'running' to 'running'`, observed in practice, not just theoretical).
+    A session-level advisory lock stays held until explicitly released or
+    the connection closes — the right primitive for a critical section
+    that isn't one transaction.
+
+    Why this uses its own `engine.connect()` instead of `db` (caught only
+    after `db.commit()`-in-a-loop caused a real deadlock in testing, not
+    anticipated up front): a Postgres session-level advisory lock is tied
+    to the *physical* backend connection that requested it, not to a
+    SQLAlchemy `Session` object. The default `sessionmaker` here
+    (`autocommit=False`) checks its connection back into the pool at every
+    `db.commit()` and checks out a — possibly different — one for whatever
+    runs next. `_advance_workflow_locked` commits several times per call,
+    so `db`'s underlying physical connection can change mid-call; an
+    unlock issued later on `db` has no effect on the earlier connection
+    that actually holds the lock, which is left orphaned, idle in the
+    pool, holding the lock forever. The next attempt to lock the same
+    instance — e.g. a second `resume_workflow_step` call in the same
+    request-handling session, exactly the manager-approval-then-IT-
+    approval sequence every onboarding runs — then blocks permanently.
+    A dedicated `Connection`, opened here and held (not committed, just
+    closed) for the entire call, guarantees the acquire and release happen
+    on the same physical backend connection regardless of how many times
+    `db` itself commits in between.
+
+    `hashtext(instance_id::text)` collapses a UUID into the 32-bit key
+    `pg_advisory_lock` takes — a theoretical hash collision between two
+    different instances is possible but negligible at this project's demo
+    scale (a handful of concurrent instances, never thousands); not worth
+    a two-key composite lock to close a gap this project will never
+    actually hit (Principle 1: realism, not enterprise scale).
+    """
+    with engine.connect() as lock_conn:
+        _acquire_instance_lock(lock_conn, instance.id)
+        try:
+            return _advance_workflow_locked(db, instance)
+        finally:
+            _release_instance_lock(lock_conn, instance.id)
+
+
+def try_advance_workflow(db: Session, instance: WorkflowInstance) -> bool:
+    """Non-blocking counterpart to `advance_workflow`, for the worker's
+    poll loop only. If another caller already holds this instance's lock
+    (almost always: an API request's own inline `advance_workflow` is
+    mid-flight on it), returns `False` immediately instead of blocking —
+    the next poll tick (3s later) will simply try again, which is fine:
+    the worker is a scheduler, not the only path that advances a workflow
+    (see this module's docstring). Returns `True` once it has actually run
+    `_advance_workflow_locked` to completion (successfully or not — an
+    exception still propagates after the lock is released). See
+    `advance_workflow`'s docstring for why the lock is held on its own
+    dedicated `Connection` rather than on `db`."""
+    with engine.connect() as lock_conn:
+        if not _try_acquire_instance_lock(lock_conn, instance.id):
+            return False
+        try:
+            _advance_workflow_locked(db, instance)
+            return True
+        finally:
+            _release_instance_lock(lock_conn, instance.id)
+
+
+def _advance_workflow_locked(db: Session, instance: WorkflowInstance) -> WorkflowInstance:
     """Runs steps, in definition order, until the instance completes, fails,
     pauses for approval, or starts waiting on a scheduled retry. Safe to
     call on an instance that isn't actually advanceable (e.g. already
@@ -171,6 +271,11 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
     call this unconditionally on every instance it polls without needing
     its own "is this instance actually ready" branch beyond the query that
     selected it.
+
+    Not called directly outside this module — always through
+    `advance_workflow` (blocking) or `try_advance_workflow` (non-blocking),
+    both of which hold this instance's advisory lock for the duration of
+    the call. See `advance_workflow`'s docstring for why.
     """
     if instance.status not in (InstanceStatus.RUNNING, InstanceStatus.WAITING_EXTERNAL):
         return instance

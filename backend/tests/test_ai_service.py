@@ -38,6 +38,12 @@ from app.services.integrations.mcp_client import MCPToolError
 from app.services.workflows.definition_loader import load_all_definitions
 from app.services.workflows.service import start_workflow
 
+# Captured at import time, before any test's autouse fixture monkeypatches
+# ai_service._client to a fake — this is the one real reference the Phase
+# 13 timeout test needs to call the actual OpenAI-client-constructing
+# function, not the fake one every other test in this file wants.
+_real_client_factory = ai_service._client
+
 
 @pytest.fixture(autouse=True)
 def _load_definitions(db_session: Session) -> None:
@@ -601,3 +607,18 @@ def test_recommendation_schema_structurally_rejects_names_outside_the_catalog() 
             confidence_score=0.9,
             explanation="Should never validate.",
         )
+
+
+def test_client_uses_configured_timeout() -> None:
+    """Phase 13: the real OpenAI client must be constructed with an
+    explicit timeout, not the SDK's own 600s default (openai._constants.
+    DEFAULT_TIMEOUT) — a hang that long would sit well outside the
+    engine's own retry/backoff window ([2, 8, 30]s) before a stuck step
+    ever got the chance to fail into it. Calls the real _client
+    (captured above, before conftest.py's autouse fixture replaces it
+    with a fake for every other test) — constructing an OpenAI client
+    makes no network call by itself, so this is safe without mocking
+    anything further. _fake_api_key (autouse in this file) already
+    supplies a non-empty key."""
+    client = _real_client_factory()
+    assert client.timeout == get_settings().openai_timeout_seconds

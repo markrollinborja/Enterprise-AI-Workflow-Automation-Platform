@@ -6,13 +6,14 @@ import { ApprovalInbox } from './components/ApprovalInbox'
 import { DashboardOverview } from './components/DashboardOverview'
 import { WorkflowInstanceList } from './components/WorkflowInstanceList'
 import { WorkflowDetail } from './components/WorkflowDetail'
+import { AuditLog } from './components/AuditLog'
 
 // Plain state-based view switching, not react-router-dom — this project's
 // dashboard is a handful of admin-only screens behind one login, not an app
 // that needs deep-linkable/bookmarkable URLs. Revisit if that ever becomes
 // a real requirement (see docs/architecture for the tradeoff written up in
 // full during Phase 12).
-type View = 'home' | 'overview' | 'workflows' | 'failed' | 'workflow-detail'
+type View = 'home' | 'overview' | 'workflows' | 'failed' | 'workflow-detail' | 'audit-log'
 
 // 'workflows' and 'failed' both open the same WorkflowDetail on row click —
 // this remembers which list to return to on "Back" instead of hardcoding it.
@@ -94,6 +95,9 @@ function AuthenticatedView() {
             <TabButton active={view === 'failed'} onClick={() => setView('failed')}>
               Failed Workflows
             </TabButton>
+            <TabButton active={view === 'audit-log'} onClick={() => setView('audit-log')}>
+              Audit Log
+            </TabButton>
           </nav>
         )}
 
@@ -117,6 +121,8 @@ function AuthenticatedView() {
               onBack={() => setView(detailOrigin)}
             />
           )}
+
+          {view === 'audit-log' && isAdmin && <AuditLog />}
 
           {view === 'home' && (
             <>

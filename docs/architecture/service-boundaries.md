@@ -66,9 +66,9 @@ Calls: `repositories/employee_repo`, `access_package_repo`, `ai_execution_repo`.
 
 ## integrations
 
-Owns: the MCP client wrapper — the single place that knows how to reach the MCP server. Wraps every tool call with retry/backoff, timeout, and an `MCPToolExecution` audit row.
-Does not: contain business logic about *when* to call a tool — callers (workflow engine, ai service) decide that; this module just executes the call safely and logs it.
-Calls: `audit`. Talks to the MCP server process over the network.
+Owns: the MCP client wrapper — the single place that knows how to reach the MCP server. Wraps every tool call with retry/backoff, timeout, and writes the `MCPToolExecution` row itself, directly, on every call, success or failure.
+Does not: contain business logic about *when* to call a tool — callers (workflow engine, ai service) decide that; this module just executes the call safely and logs it. There's no separate audit-writing service it hands that off to — see `## dashboard` below for why.
+Calls: `repositories/mcp_tool_execution_repo`. Talks to the MCP server process over the network.
 
 ## notifications
 
@@ -78,15 +78,19 @@ Owns: `notify()`, the single entry point `services/workflows/service.py` calls a
 Does not: call Slack directly — real sends go through `integrations` (the Slack MCP tool), so every notification-triggered Slack call is audited in `MCPToolExecution` exactly like any other Slack call. Does not decide *whether* an event is notification-worthy — that judgment lives in the caller (`services/workflows/service.py`). No SLA timers, escalation, or resend — V1 is one-time notify only (explicit scope cut; those are V2 features).
 Calls: `repositories/notification_repo`, `integrations` (for Slack).
 
-## audit
+## dashboard
 
-Owns: writing `AuditLog` rows. Every other service calls this; nothing writes to `AuditLog` directly from a repository or route.
-Does not: make decisions or branch workflow logic based on what it logs — it's write-only from the rest of the system's perspective.
-Calls: nothing. Leaf, like `rules`.
+*(Built in Phase 12.)* Module: `app/services/dashboard/service.py`. Read-only — the admin dashboard's entire backend surface (`GET /dashboard/summary`, `GET /workflow-instances` [+ `?status=`, + `/{id}`], `GET /audit-log`), all gated `require_role(ADMINISTRATOR)`.
+
+Owns: `get_summary` (counts + breakdowns for the Overview page), `list_workflow_instances`/`get_workflow_instance_detail` (the Workflows, Failed Workflows, and Workflow Detail pages — one summary shape serves both the general list and the failed-only list via `?status=failed`, see `WorkflowInstanceSummaryResponse`'s docstring), and `build_audit_timeline` (the Audit Log page and Workflow Detail's per-instance timeline — same function, `workflow_instance_id` set or not).
+
+Does not: write anything, ever — not a single `db.add()` in this module. This is the module that replaces what the original Phase 1 sketch called an `audit` service: rather than a dedicated write path every other service calls to log an `AuditLog` row, `build_audit_timeline` composes a read-time view over rows every other service was already writing for its own reasons (`WorkflowEvent`, `ApprovalRequest`/`ApprovalDecision`, `AIExecution`, `MCPToolExecution`, `Notification`). See `data-model.md`'s "Cuts from the original list" and this module's own docstring for the full reasoning, including the documented V1 scale limit on the global (cross-instance) case.
+
+Calls: `repositories/workflow_instance_repo`, `workflow_event_repo`, `approval_request_repo`, `ai_execution_repo`, `mcp_tool_execution_repo`, `notification_repo`.
 
 ## Repositories
 
-One per aggregate (`employee_repo.py`, `workflow_repo.py`, `approval_repo.py`, `task_repo.py`, `notification_repo.py`, `audit_repo.py`, `ai_execution_repo.py`, `mcp_execution_repo.py`). Plain SQLAlchemy queries, no business logic, no calls to other services. This is what keeps services testable with a fake/mock repository instead of a real DB in unit tests.
+One per aggregate: `user_repo.py`, `department_repo.py`, `employee_repo.py`, `application_repo.py`, `access_package_repo.py`, `workflow_definition_repo.py`, `workflow_instance_repo.py`, `workflow_step_repo.py`, `workflow_event_repo.py`, `approval_request_repo.py`, `approval_decision_repo.py`, `ai_execution_repo.py`, `mcp_tool_execution_repo.py`, `notification_repo.py`. No `task_repo.py` or `audit_repo.py` — see `data-model.md`'s cuts for `Task`/`AuditLog`. Plain SQLAlchemy queries, no business logic, no calls to other services. This is what keeps services testable with a fake/mock repository instead of a real DB in unit tests.
 
 ## Why this split, not fewer/bigger service files
 

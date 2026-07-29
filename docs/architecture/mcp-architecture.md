@@ -50,7 +50,7 @@ class CreateJiraTaskOutput(BaseModel):
 
 MCP is the boundary specifically for **actions on external systems that an AI agent might plausibly need to invoke or that the workflow engine takes as a scripted action**: Jira, Slack, Calendar, employee lookup. It is *not* used for:
 
-- Internal DB reads/writes (employee CRUD, workflow state transitions, writing an `AuditLog` row) — these are ordinary repository/service calls. There's no "external system" boundary to cross and no reason to add a network hop.
+- Internal DB reads/writes (employee CRUD, workflow state transitions, writing a `WorkflowEvent`/`AIExecution`/`MCPToolExecution` row) — these are ordinary repository/service calls. There's no "external system" boundary to cross and no reason to add a network hop.
 - Auth (login, token issuance) — internal, not a tool an agent invokes.
 - The OpenAI call itself — the AI service calls OpenAI's API directly to get a completion; MCP is for the *tools the completion's tool-calling loop can invoke*, not the LLM call itself.
 
