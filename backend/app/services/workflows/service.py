@@ -20,7 +20,14 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
-from app.models.enums import FailureBehavior, InstanceStatus, StepStatus, StepType, UserRole
+from app.models.enums import (
+    FailureBehavior,
+    InstanceStatus,
+    NotificationType,
+    StepStatus,
+    StepType,
+    UserRole,
+)
 from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 from app.repositories import (
     approval_request_repo,
@@ -32,6 +39,7 @@ from app.repositories import (
     workflow_step_repo,
 )
 from app.schemas.workflow_definition import StepDefinition, WorkflowDefinitionSchema
+from app.services.notifications import service as notification_service
 from app.services.workflows.conditions import build_condition_context, evaluate_condition
 from app.services.workflows.executors import (
     StepExecutionResult,
@@ -124,6 +132,35 @@ def start_workflow(
     )
 
     return advance_workflow(db, instance)
+
+
+def _notify_submitter(
+    db: Session,
+    instance: WorkflowInstance,
+    *,
+    notification_type: NotificationType,
+    title: str,
+    body: str,
+    send_email: bool = False,
+) -> None:
+    """Notifies whoever submitted the request (HR for onboarding, the
+    employee for an access request) that their workflow reached a terminal
+    state. `initiated_by_user_id` is nullable — e.g. a seed-created or
+    system-initiated instance has no submitter — so this is a silent no-op
+    in that case, same as notification_service.notify's own recipient=None
+    handling."""
+    if instance.initiated_by_user_id is None:
+        return
+    submitter = user_repo.get_by_id(db, instance.initiated_by_user_id)
+    notification_service.notify(
+        db,
+        recipient=submitter,
+        notification_type=notification_type,
+        title=title,
+        body=body,
+        workflow_instance_id=instance.id,
+        send_email=send_email,
+    )
 
 
 def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstance:
@@ -219,6 +256,13 @@ def advance_workflow(db: Session, instance: WorkflowInstance) -> WorkflowInstanc
     instance.completed_at = _utcnow()
     instance.current_step_key = None
     db.commit()
+    _notify_submitter(
+        db,
+        instance,
+        notification_type=NotificationType.WORKFLOW_COMPLETED,
+        title="Your request was completed",
+        body=f"{instance.workflow_definition.name} finished successfully.",
+    )
     return instance
 
 
@@ -257,6 +301,30 @@ def _create_approval_request(
         assigned_user_id=assigned_user_id,
         sequence_order=approval_config.sequence_order,
     )
+
+    # Only a specifically-assigned approver (manager_approval, resolved to
+    # the employee's actual manager) gets pushed a notification — a
+    # role-pool approval (IT, Security: assigned_user_id is None) has no
+    # single owner to notify without fanning out to every user with that
+    # role, which this V1 doesn't do (no per-user "is this still relevant
+    # to me" state once one of them acts). Pool approvers still see it the
+    # moment they open their inbox (services/approvals/service.py); they
+    # just don't get proactively pinged for it.
+    if assigned_user_id is not None:
+        assignee = user_repo.get_by_id(db, assigned_user_id)
+        notification_service.notify(
+            db,
+            recipient=assignee,
+            notification_type=NotificationType.APPROVAL_REQUESTED,
+            title=f"Approval needed: {step_def.name}",
+            body=(
+                f"{instance.workflow_definition.name} is waiting on your "
+                f"{approval_config.approver_role.value} approval."
+            ),
+            workflow_instance_id=instance.id,
+            step_instance_id=step_row.id,
+            send_slack=True,
+        )
 
 
 def _resolve_approver(
@@ -403,6 +471,17 @@ def resume_workflow_step(
     transition_instance(instance, InstanceStatus.REJECTED)
     instance.completed_at = _utcnow()
     db.commit()
+    _notify_submitter(
+        db,
+        instance,
+        notification_type=NotificationType.WORKFLOW_REJECTED,
+        title="Your request was rejected",
+        body=(
+            f"{instance.workflow_definition.name} was rejected."
+            + (f" Reason: {notes}" if notes else "")
+        ),
+        send_email=True,
+    )
     return instance
 
 

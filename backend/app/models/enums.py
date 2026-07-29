@@ -179,3 +179,44 @@ class MCPExecutionStatus(str, enum.Enum):
 
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class NotificationType(str, enum.Enum):
+    """What happened — see services/notifications/service.py for exactly
+    which engine events fire each one. Deliberately three, not one per
+    workflow: the *reason* a notification exists is the same regardless of
+    which of the two V1 workflows triggered it (an approval landed in your
+    queue; a workflow you started finished; a workflow you started was
+    rejected), so the type doesn't need to name the workflow."""
+
+    APPROVAL_REQUESTED = "approval_requested"
+    WORKFLOW_COMPLETED = "workflow_completed"
+    WORKFLOW_REJECTED = "workflow_rejected"
+
+
+class NotificationChannel(str, enum.Enum):
+    """IN_APP is always written. SLACK is sent (via the same
+    send_slack_notification MCP tool the engine itself uses — see
+    services/notifications/service.py) only for APPROVAL_REQUESTED, the one
+    notification type where getting someone's attention *now* actually
+    matters. EMAIL is simulated only — formatted and logged/written as its
+    own row, never actually sent (no SMTP/Gmail integration in V1, matching
+    the project's non-goals) — but is a real, first-class channel value,
+    not a placeholder, so a future real sender slots in the same way Slack
+    already does."""
+
+    IN_APP = "in_app"
+    SLACK = "slack"
+    EMAIL = "email"
+
+
+class NotificationStatus(str, enum.Enum):
+    """Per-row delivery outcome for that row's own channel — distinct from
+    `Notification.read_at`, which tracks whether the *recipient* has seen an
+    IN_APP row, not whether it was ever delivered. A SLACK row can be
+    FAILED (the MCP call errored) while the IN_APP row for the same event
+    is COMPLETED — each channel gets its own row, so one channel's failure
+    never hides that the other one succeeded."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"

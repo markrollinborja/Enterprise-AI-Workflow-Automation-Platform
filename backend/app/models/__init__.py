@@ -14,6 +14,9 @@ from app.models.enums import (
     InstanceStatus,
     MCPExecutionStatus,
     MCPToolCaller,
+    NotificationChannel,
+    NotificationStatus,
+    NotificationType,
     RiskLevel,
     StepStatus,
     StepType,
@@ -21,6 +24,7 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.mcp_tool_execution import MCPToolExecution
+from app.models.notification import Notification
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -47,6 +51,10 @@ __all__ = [
     "MCPExecutionStatus",
     "MCPToolCaller",
     "MCPToolExecution",
+    "Notification",
+    "NotificationChannel",
+    "NotificationStatus",
+    "NotificationType",
     "RiskLevel",
     "StepStatus",
     "StepType",

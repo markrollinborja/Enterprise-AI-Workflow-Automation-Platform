@@ -15,6 +15,7 @@ from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
 from app.models.mcp_tool_execution import MCPToolExecution
+from app.models.notification import Notification
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -186,6 +187,7 @@ def db_session():
             session.execute(delete(ApprovalRequest))
             session.execute(delete(AIExecution))
             session.execute(delete(MCPToolExecution))
+            session.execute(delete(Notification))
             session.execute(delete(WorkflowEvent))
             session.execute(delete(WorkflowStepInstance))
             session.execute(delete(WorkflowInstance))

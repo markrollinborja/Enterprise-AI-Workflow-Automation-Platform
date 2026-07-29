@@ -75,9 +75,9 @@ erDiagram
 
 **Task** — `id, workflow_instance_id (FK), step_instance_id (FK, nullable), task_type, assigned_role, status, description, created_at, completed_at`. Internal checklist items (e.g. "IT: provision laptop") that aren't necessarily backed by an external MCP call.
 
-**MCPToolExecution** — `id, tool_name, caller (workflow_engine | ai_agent), workflow_instance_id (FK, nullable), step_instance_id (FK, nullable), input_params, output_result, status, attempt_number, duration_ms, error_message, created_at`. The single audit table for every Jira/Slack/Calendar/employee-lookup call, from either caller. *(Not built yet — Phase 10.)*
+**MCPToolExecution** — `id, tool_name, caller (workflow_engine | ai_agent), workflow_instance_id (FK, nullable), step_instance_id (FK, nullable), input_params, output_result, status, mock_mode, duration_ms, error_message, created_at`. *(Built in Phase 10.)* The single audit table for every Jira/Slack/Calendar/employee-lookup call, from either caller (the workflow engine's `executors.py`, or the AI service's agentic tool-calling loop).
 
-**Notification** — `id, user_id (FK), workflow_instance_id (FK, nullable), type, title, body, channel (in_app | slack), status, created_at, read_at (nullable)`.
+**Notification** — `id, user_id (FK), workflow_instance_id (FK, nullable), type (approval_requested | workflow_completed | workflow_rejected), title, body, channel (in_app | slack | email), status (completed | failed), created_at, read_at (nullable)`. *(Built in Phase 11.)* One row per (event, channel) — an `APPROVAL_REQUESTED` notification that fires both in-app and Slack writes two rows, not one row listing multiple channels. `read_at` only ever set on `in_app` rows.
 
 **AuditLog** — `id, timestamp, actor_user_id (FK, nullable), actor_type (user | system | ai), action, resource_type, resource_id, workflow_instance_id (FK, nullable), outcome, metadata (JSON)`. `actor_user_id` is null for system/AI-originated events; `actor_type` disambiguates.
 

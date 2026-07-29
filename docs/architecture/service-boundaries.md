@@ -72,9 +72,11 @@ Calls: `audit`. Talks to the MCP server process over the network.
 
 ## notifications
 
-Owns: writing `Notification` rows (in-app) and, when a Slack notification is warranted, delegating the actual send to `integrations` (which calls the Slack MCP tool).
-Does not: call Slack directly — that would bypass the MCP audit trail.
-Calls: `integrations`, `audit`.
+*(Built in Phase 11.)* Module: `app/services/notifications/service.py`.
+
+Owns: `notify()`, the single entry point `services/workflows/service.py` calls at the three points a workflow event matters to a specific person — `APPROVAL_REQUESTED` (a specifically-assigned approver only, in-app + Slack), `WORKFLOW_COMPLETED` (the submitter, in-app only), `WORKFLOW_REJECTED` (the submitter, in-app + simulated email). Always writes an in-app `Notification` row; Slack/email are opt-in per call, one row per (event, channel) rather than one row listing multiple channels. `recipient=None` (no linked `User`, e.g. an onboarding new hire with no login yet) is a silent no-op, not an error. A failed Slack send is caught and recorded as its own `FAILED` row — never raised, never blocks the in-app row (mirrors `notify_slack`'s own `failure_behavior=continue`). Email is simulated (formatted, logged, written as its own row) — no SMTP/Gmail integration in V1, matching the project's non-goals.
+Does not: call Slack directly — real sends go through `integrations` (the Slack MCP tool), so every notification-triggered Slack call is audited in `MCPToolExecution` exactly like any other Slack call. Does not decide *whether* an event is notification-worthy — that judgment lives in the caller (`services/workflows/service.py`). No SLA timers, escalation, or resend — V1 is one-time notify only (explicit scope cut; those are V2 features).
+Calls: `repositories/notification_repo`, `integrations` (for Slack).
 
 ## audit
 
