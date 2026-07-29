@@ -7,6 +7,7 @@ from app.api.routes import (
     applications,
     approvals,
     auth,
+    dashboard,
     departments,
     employees,
     health,
@@ -54,6 +55,7 @@ app.include_router(applications.router)
 app.include_router(access_requests.router)
 app.include_router(webhooks.router)
 app.include_router(notifications.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/")

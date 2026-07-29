@@ -3,10 +3,11 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.enums import NotificationChannel
 from app.models.notification import Notification
+from app.models.workflow import WorkflowInstance
 
 
 def get_by_id(db: Session, notification_id: UUID) -> Notification | None:
@@ -44,3 +45,23 @@ def mark_read(db: Session, notification: Notification) -> Notification:
     db.commit()
     db.refresh(notification)
     return notification
+
+
+def list_for_timeline(
+    db: Session, *, workflow_instance_id: UUID | None = None, limit: int = 100
+) -> list[Notification]:
+    """Unlike list_for_user (IN_APP only, what a recipient's inbox shows),
+    this returns every channel — the Phase 12 composed audit timeline's
+    "notification sent" entries need the SLACK/EMAIL delivery attempts too,
+    not just the in-app row. See services/dashboard/service.py."""
+    query = select(Notification).options(
+        joinedload(Notification.user),
+        joinedload(Notification.workflow_instance).joinedload(WorkflowInstance.workflow_definition),
+    )
+    if workflow_instance_id is not None:
+        query = query.where(Notification.workflow_instance_id == workflow_instance_id).order_by(
+            Notification.created_at
+        )
+    else:
+        query = query.order_by(Notification.created_at.desc()).limit(limit)
+    return list(db.scalars(query))

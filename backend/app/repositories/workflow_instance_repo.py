@@ -6,14 +6,57 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.models.employee import Employee
 from app.models.enums import InstanceStatus, StepStatus
 from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 
 
 def get_by_id(db: Session, instance_id: UUID) -> WorkflowInstance | None:
     return db.get(WorkflowInstance, instance_id)
+
+
+def get_by_id_with_relations(db: Session, instance_id: UUID) -> WorkflowInstance | None:
+    """Same row as get_by_id, but with everything the Phase 12 workflow
+    detail page needs eager-loaded in one query — steps, the definition
+    name, employee, and who started it. Not used by the engine itself
+    (which only ever needs the bare instance), so this stays a separate
+    function rather than making every get_by_id caller pay for joins it
+    doesn't need."""
+    return db.scalar(
+        select(WorkflowInstance)
+        .where(WorkflowInstance.id == instance_id)
+        .options(
+            joinedload(WorkflowInstance.workflow_definition),
+            joinedload(WorkflowInstance.employee).joinedload(Employee.department),
+            joinedload(WorkflowInstance.initiated_by),
+            selectinload(WorkflowInstance.step_instances),
+        )
+    )
+
+
+def list_all(db: Session) -> list[WorkflowInstance]:
+    """The Phase 12 dashboard's workflow-instance list — every instance,
+    most-recently-active first. No pagination in V1: at this project's demo
+    scale (a handful of seeded instances) a full table scan with eager
+    loads is simpler and fast enough; a real paginated endpoint is what a
+    production version would need once this table has thousands of rows,
+    not sixteen. `employee.department` is eager-loaded too — the dashboard
+    summary's "requests by department" aggregation reads it off this same
+    result set rather than a second query."""
+    return list(
+        db.scalars(
+            select(WorkflowInstance)
+            .options(
+                joinedload(WorkflowInstance.workflow_definition),
+                joinedload(WorkflowInstance.employee).joinedload(Employee.department),
+                joinedload(WorkflowInstance.initiated_by),
+                selectinload(WorkflowInstance.step_instances),
+            )
+            .order_by(WorkflowInstance.updated_at.desc())
+        )
+    )
 
 
 def create(db: Session, **fields: Any) -> WorkflowInstance:
