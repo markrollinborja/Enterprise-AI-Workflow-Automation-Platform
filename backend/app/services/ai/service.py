@@ -64,6 +64,13 @@ from app.services.integrations.mcp_client import MCPToolError
 # not an infinite loop against OpenAI's API.
 _MAX_TOOL_ROUNDS = 2
 
+# `strict: True` is required here, not optional: this schema is passed to
+# client.chat.completions.parse() alongside response_format (structured
+# outputs), and OpenAI's SDK refuses to auto-parse tool calls against any
+# function tool that isn't marked strict, raising "<name> is not strict.
+# Only strict function tools can be auto-parsed" on every call otherwise.
+# Strict mode in turn requires additionalProperties: False and every
+# property listed in required — both already true below.
 _LOOKUP_EMPLOYEE_TOOL_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -72,6 +79,7 @@ _LOOKUP_EMPLOYEE_TOOL_SCHEMA: dict[str, Any] = {
             "Look up an employee's job title, department, and employment "
             "type by their employee ID."
         ),
+        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
