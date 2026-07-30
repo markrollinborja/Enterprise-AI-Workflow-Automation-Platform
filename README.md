@@ -2,7 +2,7 @@
 
 Enterprise Employee Workflow Automation Platform — a reusable workflow orchestration system that automates internal employee processes (onboarding, software access requests) through configurable workflows, human approval chains, business rules, AI-assisted recommendations, and MCP-powered integrations, with complete auditability.
 
-**Status:** Version 1 in active development. This README documents what's built so far (Phase 13 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, and [docs/architecture/](docs/architecture/) for how the system fits together.
+**Status:** Version 1 in active development. This README documents what's built so far (Phase 15 of the build) — not a finished product. See [docs/decisions/](docs/decisions/) for the reasoning behind every major architecture choice, [docs/architecture/](docs/architecture/) for how the system fits together, [docs/api/api-guide.md](docs/api/api-guide.md) for the REST API, [docs/security/security-notes.md](docs/security/security-notes.md) for the security posture, and [docs/troubleshooting.md](docs/troubleshooting.md) if something local isn't working.
 
 ## Workflow diagrams
 
@@ -121,6 +121,10 @@ docs/
   architecture/  System design docs — read these first
   decisions/     ADRs — the "why" behind every major choice
   workflows/     Workflow flow diagrams (Mermaid source + generation prompt)
+  api/           API guide — endpoint reference grouped by resource
+  security/      Security notes — data stored, access control, secrets, prod gaps
+  testing/       Testing strategy — coverage map and current numbers
+  troubleshooting.md  Common local-dev errors and fixes
 docker-compose.yml
 .env.example
 ```
