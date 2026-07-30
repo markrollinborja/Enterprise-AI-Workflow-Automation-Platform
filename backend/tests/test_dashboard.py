@@ -462,3 +462,128 @@ def test_audit_log_route_admin_round_trip(
     response = client.get("/audit-log", headers=_auth_headers(client, token))
     assert response.status_code == 200
     assert len(response.json()) > 0
+
+
+# ---------------------------------------------------------------------------
+# POST /workflow-instances/{id}/steps/{step_key}/retry (Phase 13b) —
+# actually defined in api/routes/workflow_instances.py, not dashboard.py,
+# but tested here alongside the rest of the /workflow-instances surface,
+# reusing this file's admin/login fixtures rather than duplicating them.
+# ---------------------------------------------------------------------------
+
+
+def test_retry_route_requires_admin(client: TestClient, db_session: Session) -> None:
+    failed = _failed_instance(db_session)
+    non_admin = _employee_user(db_session)
+    token = _login(client, non_admin.email)
+
+    response = client.post(
+        f"/workflow-instances/{failed.id}/steps/validate_employee/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert response.status_code == 403
+
+
+def test_retry_route_unknown_instance_is_404(client: TestClient, db_session: Session) -> None:
+    admin = _admin_user(db_session)
+    token = _login(client, admin.email)
+
+    response = client.post(
+        f"/workflow-instances/{uuid.uuid4()}/steps/validate_employee/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert response.status_code == 404
+
+
+def test_retry_route_unknown_step_key_is_404(client: TestClient, db_session: Session) -> None:
+    failed = _failed_instance(db_session)
+    admin = _admin_user(db_session)
+    token = _login(client, admin.email)
+
+    response = client.post(
+        f"/workflow-instances/{failed.id}/steps/not_a_real_step/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert response.status_code == 404
+
+
+def test_retry_route_on_failed_step_reruns_it_and_records_who(
+    client: TestClient, db_session: Session
+) -> None:
+    """validate_employee fails immediately on a missing employee_id
+    (`_failed_instance`'s setup) — the retry route can't fix that input
+    itself (see test_workflow_engine.py's service-level test for the
+    "actually reaches success" case), so this asserts what the route layer
+    owns: it's reachable by an admin, and a retry call updates the response
+    body's step detail. Retrying twice in a row is legitimately allowed
+    here, not a 409 — the same unfixed root cause fails again each time,
+    landing back on FAILED, which is retryable again by design (that's the
+    whole feature); test_retry_route_on_non_failed_step_is_409 below covers
+    the actual rejection case, a step that was never FAILED to begin with.
+    """
+    failed = _failed_instance(db_session)
+    admin = _admin_user(db_session)
+    token = _login(client, admin.email)
+
+    response = client.post(
+        f"/workflow-instances/{failed.id}/steps/validate_employee/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    step = next(s for s in body["steps"] if s["step_key"] == "validate_employee")
+    assert step["retried_by_name"] == admin.full_name
+    assert step["retried_at"] is not None
+    # Same underlying problem, still unfixed -> fails again immediately ->
+    # back to FAILED, not left at PENDING/RUNNING.
+    assert step["status"] == "failed"
+    assert body["status"] == "failed"
+
+    # Retrying again is allowed — FAILED is FAILED regardless of how it
+    # got there — and increments attempt_count again rather than erroring.
+    second = client.post(
+        f"/workflow-instances/{failed.id}/steps/validate_employee/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert second.status_code == 200
+    second_step = next(
+        s for s in second.json()["steps"] if s["step_key"] == "validate_employee"
+    )
+    assert second_step["attempt_count"] == step["attempt_count"] + 1
+
+
+def test_retry_route_on_non_failed_step_is_409(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The actual rejection case retry_failed_step guards: a step that was
+    never FAILED at all. Uses a completed onboarding instance's
+    manager_approval step, which is COMPLETED, not FAILED."""
+    instance, _hr, _manager = _completed_onboarding_instance(db_session, monkeypatch)
+    admin = _admin_user(db_session)
+    token = _login(client, admin.email)
+
+    response = client.post(
+        f"/workflow-instances/{instance.id}/steps/manager_approval/retry",
+        headers=_auth_headers(client, token),
+    )
+    assert response.status_code == 409
+
+
+def test_retry_route_appears_in_audit_timeline(client: TestClient, db_session: Session) -> None:
+    failed = _failed_instance(db_session)
+    admin = _admin_user(db_session)
+    token = _login(client, admin.email)
+
+    client.post(
+        f"/workflow-instances/{failed.id}/steps/validate_employee/retry",
+        headers=_auth_headers(client, token),
+    )
+
+    response = client.get(
+        f"/workflow-instances/{failed.id}", headers=_auth_headers(client, token)
+    )
+    entry = next(
+        e for e in response.json()["audit_timeline"] if e["action"] == "step_manually_retried"
+    )
+    assert entry["actor"] == admin.full_name
+    assert entry["metadata"]["step_key"] == "validate_employee"

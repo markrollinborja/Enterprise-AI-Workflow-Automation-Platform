@@ -236,6 +236,8 @@ def _step_response(step: WorkflowStepInstance) -> WorkflowStepDetailResponse:
         completed_at=step.completed_at,
         error_message=step.error_message,
         created_at=step.created_at,
+        retried_by_name=_user_name(step.retried_by),
+        retried_at=step.retried_at,
     )
 
 
@@ -343,6 +345,38 @@ def _terminal_entry(instance: WorkflowInstance) -> AuditTimelineEntryResponse | 
         outcome=outcome,
         metadata=metadata,
     )
+
+
+def _manually_retried_entries(instance: WorkflowInstance) -> list[AuditTimelineEntryResponse]:
+    """One synthesized entry per step that's ever been manually retried on
+    this instance (Phase 13b) — same "read the live columns, no dedicated
+    table" approach as `_terminal_entry`. Unlike `attempt_count` (which the
+    engine's own automatic backoff retry also increments), `retried_at`/
+    `retried_by_user_id` are set only by `retry_failed_step`, so every
+    entry here really is a human intervention, never the engine's own
+    retry-with-backoff. Only ever holds the most recent retry per step —
+    a second manual retry of the same step overwrites the first's
+    timestamp/actor, same known limitation as `_terminal_entry`'s single
+    live status at this project's demo scale."""
+    entries: list[AuditTimelineEntryResponse] = []
+    for step in instance.step_instances:
+        if step.retried_at is None:
+            continue
+        entries.append(
+            AuditTimelineEntryResponse(
+                timestamp=step.retried_at,
+                actor=_user_name(step.retried_by) or "Unknown",
+                actor_type="user",
+                action="step_manually_retried",
+                resource_type="workflow_step_instance",
+                resource_id=step.id,
+                workflow_instance_id=instance.id,
+                workflow_name=instance.workflow_definition.name,
+                outcome="retried",
+                metadata={"step_key": step.step_key, "attempt_count": step.attempt_count},
+            )
+        )
+    return entries
 
 
 def build_audit_timeline(
@@ -496,13 +530,17 @@ def build_audit_timeline(
 
     if workflow_instance_id is not None:
         instance = workflow_instance_repo.get_by_id_with_relations(db, workflow_instance_id)
-        terminal = _terminal_entry(instance) if instance is not None else None
-        if terminal is not None:
-            entries.append(terminal)
+        if instance is not None:
+            terminal = _terminal_entry(instance)
+            if terminal is not None:
+                entries.append(terminal)
+            entries.extend(_manually_retried_entries(instance))
     else:
+        all_instances = workflow_instance_repo.list_all(db)
+
         terminal_candidates = [
             i
-            for i in workflow_instance_repo.list_all(db)
+            for i in all_instances
             if i.status in _TERMINAL_OUTCOMES and i.completed_at is not None
         ]
         terminal_instances = sorted(
@@ -512,6 +550,12 @@ def build_audit_timeline(
             terminal = _terminal_entry(instance)
             if terminal is not None:
                 entries.append(terminal)
+
+        retried_candidates = [
+            entry for i in all_instances for entry in _manually_retried_entries(i)
+        ]
+        retried_candidates.sort(key=lambda e: e.timestamp, reverse=True)
+        entries.extend(retried_candidates[:limit])
 
     entries.sort(key=lambda e: e.timestamp)
     return entries

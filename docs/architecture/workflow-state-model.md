@@ -30,13 +30,15 @@ stateDiagram-v2
     waiting_external --> failed: retries exhausted
     waiting_external --> cancelled: admin cancels
 
+    failed --> running: admin manually retries a failed step (Phase 13b)
+
     completed --> [*]
     failed --> [*]
     rejected --> [*]
     cancelled --> [*]
 ```
 
-`completed`, `failed`, `rejected`, `cancelled` are terminal — no code path may write a new status onto an instance already in one of these. This is enforced in `services/workflow`, not left to callers to remember.
+`completed`, `failed`, `rejected`, `cancelled` are terminal for the engine's own automatic logic — no code path in the normal advance loop may write a new status onto an instance already in one of these. `failed --> running` is the one deliberate, admin-gated exception (Phase 13b, see below) — the state machine only certifies the transition is *structurally* valid; `retry_failed_step` is what actually gates who may trigger it.
 
 ## WorkflowStepInstance states
 
@@ -57,6 +59,8 @@ stateDiagram-v2
     waiting_approval --> completed: approval decision = approved
     waiting_approval --> rejected: approval decision = rejected
     waiting_external --> completed: /webhooks/jira confirms fulfillment
+
+    failed --> pending: admin manually retries (Phase 13b)
 
     completed --> [*]
     failed --> [*]
@@ -108,3 +112,7 @@ def transition(instance: WorkflowInstance, target: InstanceStatus) -> None:
 ```
 
 **Update (Phase 5):** this is now real code — `app/services/workflows/state_machine.py`, with `INSTANCE_TRANSITIONS`/`STEP_TRANSITIONS` tables matching the diagrams above exactly, and `tests/test_state_machine.py` covering every allowed transition plus a representative sample of disallowed ones (moved earlier than originally planned, since the tables and their tests have zero dependency on the engine that will call them). Phase 6 doesn't implement this — it *calls* `transition_instance()`/`transition_step()` as the engine advances instances and steps, the same way Phase 4's services call `NotFoundError`/`ConflictError` rather than re-deriving HTTP error handling per route.
+
+**Update (Phase 13b): manual retry adds one escape hatch from each terminal state, not a new state.** `POST /workflow-instances/{id}/steps/{step_key}/retry` (admin-only) calls `services/workflows/service.py::retry_failed_step`, which resets a `FAILED` step to `PENDING` with `scheduled_at = now()` and, if that step's failure had also taken the instance down, moves the instance `FAILED -> RUNNING` — then calls `advance_workflow` inline so the retry is visible immediately. The same row is reused (`attempt_count` increments, same as an automatic backoff retry), plus two new columns — `WorkflowStepInstance.retried_by_user_id` / `retried_at` — that only `retry_failed_step` ever sets, which is what lets the audit trail tell "the engine retried this itself" apart from "an admin intervened" despite both sharing that row and counter.
+
+One state combination `retry_failed_step` explicitly rejects rather than allows: a step that's `FAILED` while its instance has already reached `COMPLETED` (`REJECTED`/`CANCELLED` too, though those can't actually contain a `FAILED` step given the tables above). This is reachable when a step's `failure_behavior` is `continue` — the engine's loop moves straight past that failure within the *same* `advance_workflow` call, so the instance can finish before anyone could click retry. Resetting such a step to `PENDING` without this guard would strand it there forever: `advance_workflow` is a documented no-op on anything but `running`/`waiting_external`, so nothing would ever pick the reset step back up. `retry_failed_step` checks the instance's status too, not just the step's, specifically to close this gap.

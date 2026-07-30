@@ -28,9 +28,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.security import hash_password
 from app.db.session import engine
 from app.models.employee import Employee
-from app.models.enums import EmployeeStatus, EmploymentType, InstanceStatus, RiskLevel, StepStatus
+from app.models.enums import (
+    EmployeeStatus,
+    EmploymentType,
+    InstanceStatus,
+    RiskLevel,
+    StepStatus,
+    UserRole,
+)
+from app.models.user import User
 from app.models.workflow import WorkflowInstance
 from app.repositories import access_package_repo, department_repo, employee_repo
 from app.services.workflows import service as workflow_service
@@ -39,6 +48,7 @@ from app.services.workflows.service import (
     advance_workflow,
     confirm_external_completion,
     resume_workflow_step,
+    retry_failed_step,
     start_workflow,
     try_advance_workflow,
 )
@@ -513,3 +523,114 @@ def test_try_advance_workflow_backs_off_when_another_session_holds_the_lock(
     # Once released, the same instance is advanceable again through the
     # same non-blocking path.
     assert try_advance_workflow(db_session, instance) is True
+
+
+def _create_admin(db: Session) -> User:
+    """Phase 13b's retry_failed_step needs a real users.id for its
+    retried_by_user_id foreign key — this file otherwise has no reason to
+    create User rows, since it calls resume_workflow_step directly instead
+    of going through the real approvals service."""
+    user = User(
+        email=f"admin-{uuid.uuid4()}@cordant.io",
+        hashed_password=hash_password("CorrectHorse123!"),
+        full_name="Test Admin",
+        role=UserRole.ADMINISTRATOR,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def test_retry_failed_step_reruns_and_can_reach_success(db_session: Session) -> None:
+    """The primary demo scenario: validate_employee fails immediately
+    (fail_workflow -> instance FAILED too), an admin fixes the underlying
+    problem (here: the missing employee_id) and retries — the same row
+    re-runs, this time succeeding, and the workflow keeps going to its next
+    pause point instead of staying stuck."""
+    employee, _package_name = _new_hire_with_package(db_session)
+    admin = _create_admin(db_session)
+
+    instance = start_workflow(
+        db_session,
+        workflow_key="employee_onboarding",
+        input_data={},  # missing required employee_id
+        dedup_key=f"test-retry-success-{uuid.uuid4()}",
+    )
+    assert instance.status == InstanceStatus.FAILED
+    step = _step(instance, "validate_employee")
+    assert step.status == StepStatus.FAILED
+    assert step.attempt_count == 1
+
+    # Simulates "someone fixed the underlying problem" — the retry endpoint
+    # itself never touches input_data; only the demo's test hook does here.
+    instance.input_data = {"employee_id": str(employee.id)}
+    db_session.commit()
+
+    instance = retry_failed_step(db_session, instance, step, retried_by_user_id=admin.id)
+
+    step = _step(instance, "validate_employee")
+    assert step.status == StepStatus.COMPLETED
+    assert step.attempt_count == 2
+    assert step.retried_by_user_id == admin.id
+    assert step.retried_at is not None
+    # validate_employee succeeding advances straight into manager_approval,
+    # which pauses for a human — proves the engine kept going past the
+    # retried step instead of stopping there.
+    assert instance.status == InstanceStatus.WAITING_APPROVAL
+    assert instance.completed_at is None
+
+
+def test_retry_non_failed_step_raises_conflict(db_session: Session) -> None:
+    admin = _create_admin(db_session)
+    instance = start_workflow(
+        db_session,
+        workflow_key="employee_onboarding",
+        input_data={"employee_id": str(uuid.uuid4())},
+        dedup_key=f"test-retry-not-failed-{uuid.uuid4()}",
+    )
+    # manager_approval is WAITING_APPROVAL, not FAILED.
+    step = _step(instance, "manager_approval")
+
+    with pytest.raises(ConflictError):
+        retry_failed_step(db_session, instance, step, retried_by_user_id=admin.id)
+
+
+def test_retry_step_on_completed_instance_raises_conflict(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The edge case retry_failed_step's own docstring calls out: a
+    "continue" step (notify_slack, no retry configured) can be FAILED while
+    its instance has already reached COMPLETED, since the engine's loop
+    moves straight past a continue-behavior failure in the same call.
+    Retrying such a step must be rejected, not silently strand it at
+    PENDING forever."""
+    employee, package_name = _new_hire_with_package(db_session)
+    admin = _create_admin(db_session)
+    # High confidence -> requires_human_review is False -> it_review_access's
+    # condition is false -> skipped, matching
+    # test_mcp_tool_continue_failure_behavior_does_not_fail_the_workflow's
+    # own setup, which this test otherwise mirrors exactly.
+    _mock_recommendation(monkeypatch, package_name=package_name, confidence=0.95)
+
+    instance = start_workflow(
+        db_session,
+        workflow_key="employee_onboarding",
+        input_data={
+            "employee_id": str(employee.id),
+            "force_failure_steps": ["notify_slack"],
+        },
+        dedup_key=f"test-retry-completed-{uuid.uuid4()}",
+        employee_id=employee.id,
+    )
+    instance = resume_workflow_step(
+        db_session, instance, _step(instance, "manager_approval"), decision="approved"
+    )
+    instance = _confirm_fulfillment(db_session, instance, "create_it_tasks")
+
+    assert instance.status == InstanceStatus.COMPLETED
+    step = _step(instance, "notify_slack")
+    assert step.status == StepStatus.FAILED
+
+    with pytest.raises(ConflictError):
+        retry_failed_step(db_session, instance, step, retried_by_user_id=admin.id)

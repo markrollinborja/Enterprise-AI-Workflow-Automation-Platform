@@ -40,6 +40,7 @@ erDiagram
 
     APPROVAL_REQUEST ||--o{ APPROVAL_DECISION : receives
     USER ||--o{ APPROVAL_DECISION : decides
+    USER ||--o{ WORKFLOW_STEP_INSTANCE : "may manually retry"
 
     APPLICATION ||--o{ WORKFLOW_INSTANCE : "referenced by (access requests)"
 
@@ -68,7 +69,7 @@ No `AUDIT_LOG` or `TASK` entities — see "Cuts from the original list" above. T
 
 **WorkflowInstance** — `id, workflow_definition_id (FK), status, input_data (JSON), initiated_by_user_id (FK, nullable), employee_id (FK, nullable), current_step_key, started_at, updated_at, completed_at`. *(Built in Phase 5; populated for real starting Phase 6.)* One row per running/completed onboarding or access request. See [workflow-state-model.md](./workflow-state-model.md) for `status` values and the enforced transition table (`services/workflows/state_machine.py`).
 
-**WorkflowStepInstance** — `id, workflow_instance_id (FK), step_key, step_type, status, input_data, output_data, attempt_count, scheduled_at, external_ref, started_at, completed_at, error_message, created_at`. *(Built in Phase 5; populated for real starting Phase 6. `external_ref` added Phase 10 checkpoint 3.)* One row per step per instance, in execution order. `external_ref` holds the Jira issue key for a `create_jira_task` step flagged `awaits_fulfillment` (see [ADR-0010](../decisions/0010-jira-fulfillment-confirmation-via-webhook.md)) — indexed, not unique, since mock mode's fake issue keys aren't guaranteed globally unique.
+**WorkflowStepInstance** — `id, workflow_instance_id (FK), step_key, step_type, status, input_data, output_data, attempt_count, scheduled_at, external_ref, started_at, completed_at, error_message, retried_by_user_id (FK, nullable), retried_at (nullable), created_at`. *(Built in Phase 5; populated for real starting Phase 6. `external_ref` added Phase 10 checkpoint 3; `retried_by_user_id`/`retried_at` added Phase 13b.)* One row per step per instance, in execution order. `external_ref` holds the Jira issue key for a `create_jira_task` step flagged `awaits_fulfillment` (see [ADR-0010](../decisions/0010-jira-fulfillment-confirmation-via-webhook.md)) — indexed, not unique, since mock mode's fake issue keys aren't guaranteed globally unique. `retried_by_user_id`/`retried_at` are set only by `services/workflows/service.py::retry_failed_step` (admin-only manual retry) — deliberately separate from `attempt_count`, which the engine's own automatic backoff retry also increments, so the audit trail can tell the two apart despite both sharing this same row.
 
 **ApprovalRequest** — `id, workflow_instance_id (FK), step_instance_id (FK), approver_role, assigned_user_id (FK, nullable), status, sequence_order, due_at (nullable), created_at`. *(Built in Phase 7.)* `sequence_order` is display-only in V1 (e.g. "step 2 of 3") — the actual sequencing is already enforced by the engine only ever pausing on one approval step at a time, so this column doesn't do any gatekeeping itself. `assigned_user_id` is set for `manager_approval` (resolved to the specific employee's actual manager, not any user with role=manager) and left null for IT/Security approvals, which are a role-based pool instead — see `services/workflows/service.py::_resolve_approver`.
 

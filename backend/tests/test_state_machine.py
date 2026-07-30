@@ -27,7 +27,9 @@ ALL_ALLOWED_STEP_TRANSITIONS = [
 ]
 
 DISALLOWED_INSTANCE_TRANSITIONS = [
-    # Every terminal state must reject every attempted transition.
+    # Every terminal state must reject every attempted transition, except
+    # FAILED -> RUNNING (Phase 13b manual retry, see INSTANCE_TRANSITIONS) —
+    # FAILED -> PENDING specifically is still disallowed either way.
     (InstanceStatus.COMPLETED, InstanceStatus.RUNNING),
     (InstanceStatus.FAILED, InstanceStatus.PENDING),
     (InstanceStatus.REJECTED, InstanceStatus.RUNNING),
@@ -42,7 +44,11 @@ DISALLOWED_INSTANCE_TRANSITIONS = [
 
 DISALLOWED_STEP_TRANSITIONS = [
     (StepStatus.COMPLETED, StepStatus.RUNNING),
-    (StepStatus.FAILED, StepStatus.PENDING),
+    # FAILED -> PENDING is Phase 13b's one deliberate exception (manual
+    # retry) — see STEP_TRANSITIONS. FAILED -> RUNNING directly is still
+    # disallowed either way: even a retry has to re-enter at PENDING like
+    # every other step, not skip straight to RUNNING.
+    (StepStatus.FAILED, StepStatus.RUNNING),
     (StepStatus.SKIPPED, StepStatus.RUNNING),
     (StepStatus.REJECTED, StepStatus.COMPLETED),
     (StepStatus.PENDING, StepStatus.COMPLETED),

@@ -153,11 +153,20 @@ class WorkflowStepInstance(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Phase 13b: set only by services/workflows/service.py::retry_failed_step,
+    # never by the normal engine loop — distinct from attempt_count (which
+    # also increments on automatic backoff retries) so the audit trail can
+    # tell "the engine retried this itself" from "an admin intervened."
+    retried_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    retried_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     workflow_instance: Mapped["WorkflowInstance"] = relationship(back_populates="step_instances")
+    retried_by: Mapped["User | None"] = relationship()
 
 
 class WorkflowEvent(Base):

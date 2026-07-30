@@ -41,9 +41,14 @@ INSTANCE_TRANSITIONS: dict[InstanceStatus, set[InstanceStatus]] = {
         InstanceStatus.FAILED,
         InstanceStatus.CANCELLED,
     },
-    # Terminal — no code path may move an instance out of these.
+    # Terminal for the engine — no code path in services/workflows/service.py's
+    # normal advance loop may move an instance out of these. FAILED is the
+    # one deliberate exception: services/workflows/service.py::retry_failed_step
+    # (Phase 13b, admin-only) moves it back to RUNNING. That's a structural
+    # statement ("this transition can exist"), not an authorization one —
+    # retry_failed_step itself is what gates who may trigger it.
     InstanceStatus.COMPLETED: set(),
-    InstanceStatus.FAILED: set(),
+    InstanceStatus.FAILED: {InstanceStatus.RUNNING},
     InstanceStatus.REJECTED: set(),
     InstanceStatus.CANCELLED: set(),
 }
@@ -68,11 +73,16 @@ STEP_TRANSITIONS: dict[StepStatus, set[StepStatus]] = {
     # Jira status transition as a step failure is a real V2 feature
     # (escalation/cancellation semantics), not a gap in this table.
     StepStatus.WAITING_EXTERNAL: {StepStatus.COMPLETED},
-    # Terminal for that step. Whether the *workflow* fails, continues, or
-    # retries from here is a definition-level failure_behavior decision the
-    # Phase 6 engine makes — not something this table encodes.
+    # Terminal for that step under the engine's own automatic logic. Whether
+    # the *workflow* fails, continues, or retries from here is a
+    # definition-level failure_behavior decision the Phase 6 engine makes —
+    # not something this table encodes. FAILED -> PENDING is the one
+    # deliberate exception: services/workflows/service.py::retry_failed_step
+    # (Phase 13b, admin-only) re-enters the same row at PENDING, exactly
+    # like an automatic backoff retry does, so the rest of the engine
+    # doesn't need a separate "manually retried" code path to re-run it.
     StepStatus.COMPLETED: set(),
-    StepStatus.FAILED: set(),
+    StepStatus.FAILED: {StepStatus.PENDING},
     StepStatus.SKIPPED: set(),
     StepStatus.REJECTED: set(),
 }

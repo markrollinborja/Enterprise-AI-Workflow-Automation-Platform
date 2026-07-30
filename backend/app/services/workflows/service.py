@@ -622,3 +622,64 @@ def confirm_external_completion(
     transition_instance(instance, InstanceStatus.RUNNING)
     db.commit()
     return advance_workflow(db, instance)
+
+
+def retry_failed_step(
+    db: Session,
+    instance: WorkflowInstance,
+    step_row: WorkflowStepInstance,
+    *,
+    retried_by_user_id: UUID,
+) -> WorkflowInstance:
+    """Phase 13b, admin-only manual retry: resets a FAILED step back to
+    PENDING with `scheduled_at` due immediately, un-terminals the instance
+    if that step's failure had taken it down too, then calls
+    `advance_workflow` inline so the retry is visible right away instead of
+    waiting on the worker's next poll tick — same "instant feel" reasoning
+    as `resume_workflow_step`/`confirm_external_completion`.
+
+    Who may call this is enforced by the route (`require_role
+    (UserRole.ADMINISTRATOR)`), not here — this function only enforces that
+    the *step* is actually retryable, which is state, not authorization.
+
+    Deliberately reuses the same row (attempt_count increments, same as an
+    automatic backoff retry) rather than creating a new one — see
+    WorkflowStepInstance's own docstring on why. `retried_by_user_id` /
+    `retried_at` are what let the audit trail distinguish this from an
+    automatic retry despite sharing that same row and counter.
+
+    Rejects a step whose instance has already reached a terminal status
+    other than FAILED (COMPLETED, REJECTED, CANCELLED) — reachable when a
+    step's failure_behavior is "continue": the engine's loop moves straight
+    past that failure in the same call, so the instance can reach COMPLETED
+    while the step itself stays FAILED. Resetting such a step to PENDING
+    without this guard would silently strand it there forever —
+    advance_workflow is a documented no-op on anything but RUNNING/
+    WAITING_EXTERNAL, so nothing would ever pick it back up.
+    """
+    if step_row.status != StepStatus.FAILED:
+        raise ConflictError(
+            f"This step is not currently failed (status: {step_row.status.value}) "
+            "and cannot be retried."
+        )
+    if instance.status not in (
+        InstanceStatus.FAILED,
+        InstanceStatus.RUNNING,
+        InstanceStatus.WAITING_EXTERNAL,
+    ):
+        raise ConflictError(
+            f"This workflow instance is '{instance.status.value}' and can no longer be "
+            "advanced, so this step can't be retried."
+        )
+
+    step_row.retried_by_user_id = retried_by_user_id
+    step_row.retried_at = _utcnow()
+    transition_step(step_row, StepStatus.PENDING)
+    step_row.scheduled_at = _utcnow()
+
+    if instance.status == InstanceStatus.FAILED:
+        transition_instance(instance, InstanceStatus.RUNNING)
+        instance.completed_at = None
+
+    db.commit()
+    return advance_workflow(db, instance)

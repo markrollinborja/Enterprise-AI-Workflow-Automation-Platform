@@ -24,6 +24,24 @@ def list_for_instance(db: Session, workflow_instance_id: UUID) -> list[WorkflowS
     )
 
 
+def get_by_instance_and_key(
+    db: Session, workflow_instance_id: UUID, step_key: str
+) -> WorkflowStepInstance | None:
+    """What Phase 13b's retry route looks a step up by — instance id plus
+    the step's own key, matching how the frontend already identifies a
+    step in the Workflow Detail / Failed Workflows views (there's no
+    step-instance-id in either URL, just the instance and the step_key)."""
+    return db.scalars(
+        select(WorkflowStepInstance)
+        .where(
+            WorkflowStepInstance.workflow_instance_id == workflow_instance_id,
+            WorkflowStepInstance.step_key == step_key,
+        )
+        .order_by(WorkflowStepInstance.created_at.desc())
+        .limit(1)
+    ).first()
+
+
 def get_by_external_ref(db: Session, external_ref: str) -> WorkflowStepInstance | None:
     """What api/routes/webhooks.py looks a step up by — external_ref isn't
     unique at the DB level (see the column's own comment), so this returns

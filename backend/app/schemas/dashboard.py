@@ -63,6 +63,11 @@ class WorkflowStepDetailResponse(BaseModel):
     completed_at: datetime | None
     error_message: str | None
     created_at: datetime
+    # Phase 13b: set only when an admin manually retried this step — None
+    # for a step that's never failed, or was only ever retried
+    # automatically (see attempt_count for that count).
+    retried_by_name: str | None
+    retried_at: datetime | None
 
 
 class ApprovalDecisionDetailResponse(BaseModel):

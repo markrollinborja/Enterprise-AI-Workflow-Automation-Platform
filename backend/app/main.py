@@ -14,6 +14,7 @@ from app.api.routes import (
     notifications,
     users,
     webhooks,
+    workflow_instances,
 )
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -56,6 +57,7 @@ app.include_router(access_requests.router)
 app.include_router(webhooks.router)
 app.include_router(notifications.router)
 app.include_router(dashboard.router)
+app.include_router(workflow_instances.router)
 
 
 @app.get("/")
