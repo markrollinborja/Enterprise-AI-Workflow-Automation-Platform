@@ -46,6 +46,11 @@ export interface WorkflowStepDetailResponse {
   completed_at: string | null
   error_message: string | null
   created_at: string
+  // Phase 13b: set only when an admin manually retried this step — null
+  // for a step that's never failed, or was only ever retried
+  // automatically (see attempt_count for that count).
+  retried_by_name: string | null
+  retried_at: string | null
 }
 
 export interface ApprovalDecisionDetailResponse {
@@ -183,4 +188,27 @@ export function fetchWorkflowInstanceDetail(
 
 export function fetchAuditLog(token: string): Promise<AuditTimelineEntryResponse[]> {
   return getJson<AuditTimelineEntryResponse[]>('/audit-log', token)
+}
+
+/**
+ * Phase 13b: POST /workflow-instances/{id}/steps/{step_key}/retry
+ * (Administrator-only, enforced server-side same as every other route in
+ * this file). Returns the updated instance detail directly — same shape
+ * fetchWorkflowInstanceDetail returns — so the caller can just replace its
+ * state with the response instead of issuing a second GET.
+ */
+export async function retryFailedStep(
+  token: string,
+  instanceId: string,
+  stepKey: string,
+): Promise<WorkflowInstanceDetailResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/workflow-instances/${instanceId}/steps/${encodeURIComponent(stepKey)}/retry`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as ApiErrorBody | null
+    throw new Error(body?.error?.message ?? `Request failed: ${response.status}`)
+  }
+  return response.json() as Promise<WorkflowInstanceDetailResponse>
 }

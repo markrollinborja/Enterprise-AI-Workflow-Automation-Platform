@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   fetchWorkflowInstanceDetail,
+  retryFailedStep,
   type AIExecutionDetailResponse,
   type ApprovalDetailResponse,
   type MCPToolExecutionDetailResponse,
@@ -55,7 +56,13 @@ function Card({ children }: { children: React.ReactNode }) {
   )
 }
 
-function StepCard({ step }: { step: WorkflowStepDetailResponse }) {
+interface StepCardProps {
+  step: WorkflowStepDetailResponse
+  onRetry: (stepKey: string) => void
+  isRetrying: boolean
+}
+
+function StepCard({ step, onRetry, isRetrying }: StepCardProps) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-4">
@@ -66,11 +73,27 @@ function StepCard({ step }: { step: WorkflowStepDetailResponse }) {
             {step.external_ref ? ` · ref ${step.external_ref}` : ''}
           </p>
         </div>
-        <StatusBadge status={step.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={step.status} />
+          {step.status === 'failed' && (
+            <button
+              onClick={() => onRetry(step.step_key)}
+              disabled={isRetrying}
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+            >
+              {isRetrying ? 'Retrying…' : 'Retry'}
+            </button>
+          )}
+        </div>
       </div>
       <p className="mt-2 text-xs text-slate-400">
         Started {formatDate(step.started_at)} · Completed {formatDate(step.completed_at)}
       </p>
+      {step.retried_at && (
+        <p className="mt-1 text-xs text-slate-400">
+          Manually retried by {step.retried_by_name} on {formatDate(step.retried_at)}
+        </p>
+      )}
       {step.error_message && (
         <p className="mt-2 text-xs text-red-600">{step.error_message}</p>
       )}
@@ -200,6 +223,8 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
   const [detail, setDetail] = useState<WorkflowInstanceDetailResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryingStepKey, setRetryingStepKey] = useState<string | null>(null)
+  const [retryError, setRetryError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -213,6 +238,25 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
       .finally(() => setIsLoading(false))
   }, [token, instanceId])
 
+  async function handleRetry(stepKey: string) {
+    if (!token) return
+    setRetryingStepKey(stepKey)
+    setRetryError(null)
+    try {
+      // The retry endpoint returns the full updated instance detail
+      // directly — advance_workflow already ran inline server-side, so
+      // this one response reflects wherever the retry actually landed
+      // (re-failed, paused for approval, completed, ...) with no second
+      // fetch needed.
+      const updated = await retryFailedStep(token, instanceId, stepKey)
+      setDetail(updated)
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : 'Failed to retry step')
+    } finally {
+      setRetryingStepKey(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="text-xs text-slate-500 underline">
@@ -221,6 +265,7 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
 
       {isLoading && <p className="text-sm text-slate-500">Loading workflow instance…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {retryError && <p className="text-sm text-red-600">{retryError}</p>}
 
       {detail && (
         <>
@@ -248,7 +293,12 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
 
           <SectionCard title="Steps">
             {detail.steps.map((step) => (
-              <StepCard key={step.id} step={step} />
+              <StepCard
+                key={step.id}
+                step={step}
+                onRetry={handleRetry}
+                isRetrying={retryingStepKey === step.step_key}
+              />
             ))}
           </SectionCard>
 
