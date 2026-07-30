@@ -54,8 +54,76 @@ jobs:
       - name: Apply database migrations
         run: alembic upgrade head
 
-      - name: Test (pytest)
-        run: pytest -v
+      - name: Test (pytest, with coverage)
+        run: pytest -v --cov=app --cov-report=term-missing
+
+  mcp_server:
+    runs-on: ubuntu-latest
+
+    # lookup_employee (app/tools/employee.py) has no mock mode — it reads
+    # real rows from the same Postgres backend/ owns migrations for (see
+    # mcp_server/tests/conftest.py). Every other tool test here is fully
+    # mocked and wouldn't need this, but the job needs one Postgres either
+    # way, so it's simplest to give the whole job a real, migrated one.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: meridian
+          POSTGRES_PASSWORD: meridian
+          POSTGRES_DB: meridian_flow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U meridian -d meridian_flow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # backend/'s own scheme (postgresql+psycopg://) is an SQLAlchemy
+      # dialect selector, not something psycopg.connect() understands —
+      # mcp_server connects with plain psycopg directly (see app/db.py),
+      # so this job's DATABASE_URL deliberately omits the +psycopg suffix
+      # even though it points at the exact same database as the backend
+      # job above.
+      DATABASE_URL: postgresql://meridian:meridian@localhost:5432/meridian_flow
+      JWT_SECRET_KEY: ci-test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/requirements-dev.txt
+            mcp_server/requirements-dev.txt
+
+      - name: Install backend dependencies (migrations only)
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Apply database migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Install mcp_server dependencies
+        working-directory: mcp_server
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        working-directory: mcp_server
+        run: ruff check .
+
+      - name: Type check (mypy)
+        working-directory: mcp_server
+        run: mypy app
+
+      - name: Test (pytest, with coverage)
+        working-directory: mcp_server
+        run: pytest -v --cov=app --cov-report=term-missing
 
   frontend:
     runs-on: ubuntu-latest
