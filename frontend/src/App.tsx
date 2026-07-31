@@ -7,6 +7,8 @@ import { DashboardOverview } from './components/DashboardOverview'
 import { WorkflowInstanceList } from './components/WorkflowInstanceList'
 import { WorkflowDetail } from './components/WorkflowDetail'
 import { AuditLog } from './components/AuditLog'
+import { AccessRequestForm } from './components/AccessRequestForm'
+import { NotificationsPanel } from './components/NotificationsPanel'
 
 // Plain state-based view switching, not react-router-dom — this project's
 // dashboard is a handful of admin-only screens behind one login, not an app
@@ -127,9 +129,19 @@ function AuthenticatedView() {
           {view === 'home' && (
             <>
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Notifications
+              </h2>
+              <NotificationsPanel />
+
+              <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Pending Approvals
               </h2>
               <ApprovalInbox />
+
+              <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Request Software Access
+              </h2>
+              <AccessRequestForm />
 
               <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Employee Directory
