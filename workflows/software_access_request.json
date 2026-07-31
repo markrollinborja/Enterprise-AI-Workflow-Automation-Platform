@@ -57,7 +57,7 @@
       "name": "Create IT fulfillment task",
       "type": "mcp_tool",
       "mcp_tool": "create_jira_task",
-      "awaits_fulfillment": true,
+      "awaits_fulfillment": false,
       "failure_behavior": "retry",
       "max_attempts": 3
     },
