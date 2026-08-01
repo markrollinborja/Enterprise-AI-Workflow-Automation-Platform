@@ -16,6 +16,21 @@ Both V1 workflows, generated directly from the workflow JSON definitions and the
 
 ![Software access request workflow diagram](diagrams/software-access-request-flow.png)
 
+## Screenshots
+
+Captured against the running app in real mode (`MCP_MOCK_MODE=false`) — the Workflow Detail screenshot below shows a real Jira issue key, a real Google Calendar event, and a real Slack send, not mocked placeholders.
+
+| | |
+|---|---|
+| **Dashboard Overview** — active/pending/failed/completed counts, requests by type and department | ![Dashboard Overview](demo/screenshots/dashboard-overview.jpg) |
+| **Workflow Instances** — every instance across both workflow types, filterable by status | ![Workflow Instances list](demo/screenshots/workflow-instances-list.jpg) |
+| **Workflow Detail — steps** — full step-by-step history, including a real AI model failure and manual retry to recovery | ![Workflow Detail steps](demo/screenshots/workflow-detail-steps.jpg) |
+| **Workflow Detail — real integrations** — the actual Jira issue key/URL, Calendar event, and Slack send this instance produced | ![Workflow Detail real integrations](demo/screenshots/workflow-detail-real-integrations.jpg) |
+| **Audit Log** — chronological, color-coded feed of every workflow/approval/AI/MCP/notification event platform-wide | ![Audit Log](demo/screenshots/audit-log.jpg) |
+| **Employee Directory** — with inline Create/Edit, the only trigger for onboarding | ![Employee Directory](demo/screenshots/employee-directory.jpg) |
+| **Failed Workflows** — admin view for anything needing manual attention | ![Failed Workflows](demo/screenshots/failed-workflows.jpg) |
+| **Login** | ![Login](demo/screenshots/login.jpg) |
+
 ## What's here right now
 
 - FastAPI backend skeleton with structured config, logging, and `/health` + `/health/ready` endpoints
