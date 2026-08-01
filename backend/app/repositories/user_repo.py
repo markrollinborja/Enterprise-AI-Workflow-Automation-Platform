@@ -28,6 +28,15 @@ def list_all(db: Session) -> list[User]:
     return list(db.scalars(select(User).order_by(User.created_at)))
 
 
+def list_by_role(db: Session, role: UserRole) -> list[User]:
+    """Used for role-pool approval notifications (IT, Security — see
+    workflows/service.py's _create_approver / _create_approval_request):
+    there's no single assigned_user_id for these roles, so notifying "the
+    approver" means notifying everyone who holds the role instead of one
+    resolved person."""
+    return list(db.scalars(select(User).where(User.role == role).order_by(User.created_at)))
+
+
 def create(
     db: Session, *, email: str, hashed_password: str, full_name: str, role: UserRole
 ) -> User:

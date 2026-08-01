@@ -310,11 +310,18 @@ def test_approval_requested_notifies_assigned_manager_in_app_and_slack(
     assert channels[NotificationChannel.IN_APP].type == NotificationType.APPROVAL_REQUESTED
 
 
-def test_role_pool_approval_creates_no_notification(db_session: Session) -> None:
+def test_role_pool_approval_notifies_every_user_with_that_role(db_session: Session) -> None:
     """it_review_access is a role-pool approval (assigned_user_id is None)
-    — no single owner to notify, see _create_approval_request's comment."""
+    — no single resolved owner, so every user holding the role gets
+    notified instead of one specific person. See _create_approval_request's
+    comment: safe to fan out here because there's exactly one step per
+    role active at a time and this fires only once that step actually
+    opens up, never before the prior sequential approval."""
     new_hire, manager_user = _new_hire_with_manager(db_session)
     it_user = _create_user(db_session, email=f"it-{uuid.uuid4()}@cordant.io", role=UserRole.IT)
+    other_it_user = _create_user(
+        db_session, email=f"it2-{uuid.uuid4()}@cordant.io", role=UserRole.IT
+    )
 
     instance = start_workflow(
         db_session,
@@ -328,9 +335,13 @@ def test_role_pool_approval_creates_no_notification(db_session: Session) -> None
     )
     approval_service.decide(db_session, manager_approval.id, manager_user, decision="approved")
 
-    # The manager got their own approval-requested notification, but the IT
-    # pool approval that just opened up produced nothing for it_user.
-    assert _all_notifications(db_session, it_user.id) == []
+    # Every user holding the IT role gets pinged for the pool approval that
+    # just opened up — both the in-app row and the Slack send.
+    for user in (it_user, other_it_user):
+        rows = _all_notifications(db_session, user.id)
+        channels = {row.channel: row for row in rows}
+        assert set(channels) == {NotificationChannel.IN_APP, NotificationChannel.SLACK}
+        assert channels[NotificationChannel.IN_APP].type == NotificationType.APPROVAL_REQUESTED
 
 
 def test_workflow_completed_notifies_submitter_in_app_only(db_session: Session) -> None:

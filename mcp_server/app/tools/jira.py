@@ -76,7 +76,18 @@ def _real_create_jira_task(
         auth=(settings.jira_email, settings.jira_api_token),
         timeout=10.0,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        # response.raise_for_status()'s own message is just "400 Bad
+        # Request for url ..." — it never includes the response body, which
+        # is exactly where Jira puts the actual reason (e.g. "issuetype":
+        # "Task" isn't valid for this project, a required field is
+        # missing, ...). Re-raising with the body included is the
+        # difference between an actionable error and a dead end.
+        raise RuntimeError(
+            f"Jira API error {exc.response.status_code}: {exc.response.text}"
+        ) from exc
     body = response.json()
     issue_key = body["key"]
     return CreateJiraTaskOutput(

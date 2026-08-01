@@ -25,9 +25,10 @@ an input flag. See services/ai/service.py and tests/test_ai_service.py.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import datetime, time
 from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,7 @@ from app.schemas.workflow_definition import StepDefinition
 from app.services.ai import service as ai_service
 from app.services.integrations import mcp_client
 from app.services.integrations.mcp_client import MCPToolError
+from app.services.notifications.service import DEFAULT_SLACK_CHANNEL
 
 
 @dataclass
@@ -168,7 +170,15 @@ def _build_mcp_tool_arguments(
 
     if step_def.key == "schedule_orientation":
         employee = _require_employee(db, instance)
-        start_time = datetime.combine(employee.start_date, time(9, 0), tzinfo=UTC)
+        # Central Time, not naive UTC-as-9am: a 9:00 UTC event reads as
+        # 4:00 AM to anyone actually in the US, which looks broken in a
+        # demo even though the integration worked correctly. ZoneInfo (not
+        # a fixed UTC-6 offset) so this stays correct across the CST/CDT
+        # daylight-saving change instead of drifting an hour off for half
+        # the year.
+        start_time = datetime.combine(
+            employee.start_date, time(9, 0), tzinfo=ZoneInfo("America/Chicago")
+        )
         return {
             "summary": f"Orientation: {employee.first_name} {employee.last_name}",
             "description": (
@@ -184,7 +194,7 @@ def _build_mcp_tool_arguments(
         recommendation = context.get("recommend_access") or {}
         package_name = recommendation.get("recommended_package_name", "pending IT review")
         return {
-            "channel": "#onboarding",
+            "channel": DEFAULT_SLACK_CHANNEL,
             "message": (
                 f"{employee.first_name} {employee.last_name} has completed onboarding. "
                 f"Access package: {package_name}."

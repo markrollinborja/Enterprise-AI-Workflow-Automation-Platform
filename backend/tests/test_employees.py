@@ -1,12 +1,16 @@
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.models.enums import EmployeeStatus, EmploymentType, RiskLevel, UserRole
+from app.models.enums import EmployeeStatus, EmploymentType, InstanceStatus, RiskLevel, UserRole
 from app.models.user import User
+from app.models.workflow import WorkflowInstance
 from app.repositories import department_repo, employee_repo
+from app.services.workflows.definition_loader import load_all_definitions
 
 TEST_PASSWORD = "CorrectHorse123!"
 
@@ -34,6 +38,14 @@ def _auth_headers(client: TestClient, db: Session, role: UserRole, email: str) -
     _create_user(db, email=email, role=role)
     token = _login(client, email)
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _load_definitions(db_session: Session) -> None:
+    """POST /employees now starts a real onboarding WorkflowInstance (see
+    the regression test below), which needs the WorkflowDefinition row to
+    exist. Same pattern as test_workflow_engine.py's own autouse fixture."""
+    load_all_definitions(db_session)
 
 
 def test_list_departments_requires_auth(client: TestClient) -> None:
@@ -217,3 +229,41 @@ def test_list_and_get_employee(client: TestClient, db_session: Session) -> None:
     get_response = client.get(f"/employees/{employee.id}", headers=headers)
     assert get_response.status_code == 200
     assert get_response.json()["first_name"] == "List"
+
+
+def test_create_employee_starts_onboarding_workflow(
+    client: TestClient, db_session: Session
+) -> None:
+    """Regression test: POST /employees used to only INSERT the row —
+    nothing ever called start_workflow, so the "employee.created" trigger
+    declared in workflows/employee_onboarding.json was purely descriptive.
+    The only place that ever started a real onboarding instance was
+    seed.py's one-off demo employee. This caught that a real HR user
+    creating a real employee through the real UI/API silently produced no
+    workflow at all — see app/services/employees/service.py."""
+    headers = _auth_headers(client, db_session, UserRole.HR, "hr-workflow@cordant.io")
+    dept = department_repo.create(db_session, name="Workflow Test Dept")
+
+    response = client.post(
+        "/employees",
+        headers=headers,
+        json={
+            "first_name": "Onboarding",
+            "last_name": "Trigger",
+            "work_email": "onboarding.trigger@cordant.io",
+            "job_title": "Engineer",
+            "department_id": str(dept.id),
+            "employment_type": "full_time",
+            "start_date": "2026-01-01",
+            "location": "Remote",
+            "risk_level": "medium",
+        },
+    )
+    assert response.status_code == 200
+    employee_id = response.json()["id"]
+
+    instance = db_session.execute(
+        select(WorkflowInstance).where(WorkflowInstance.employee_id == employee_id)
+    ).scalar_one()
+    assert instance.status == InstanceStatus.WAITING_APPROVAL
+    assert instance.current_step_key == "manager_approval"

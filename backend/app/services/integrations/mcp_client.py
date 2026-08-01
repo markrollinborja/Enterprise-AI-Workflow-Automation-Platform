@@ -60,6 +60,22 @@ class MCPToolError(Exception):
     let it propagate as an unhandled exception into the engine."""
 
 
+def _describe_exception(exc: BaseException) -> str:
+    """`anyio.run` executes `_call_tool_async` inside its own TaskGroup, so
+    a failure anywhere in the streamablehttp_client/ClientSession teardown
+    (a dropped connection, a timeout while a real external API call like
+    Slack's is still in flight, ...) surfaces here as `ExceptionGroup:
+    unhandled errors in a TaskGroup (1 sub-exception)` — technically
+    accurate, useless for debugging: it names the wrapper, not what
+    actually broke. Unwraps down to the real underlying exception so
+    MCPToolExecution.error_message (and whatever a human reads off the
+    Workflow Detail page) says what actually happened."""
+    current = exc
+    while isinstance(current, (ExceptionGroup, BaseExceptionGroup)) and current.exceptions:
+        current = current.exceptions[0]
+    return f"{type(current).__name__}: {current}"
+
+
 def call_tool(
     db: Session,
     *,
@@ -88,6 +104,7 @@ def call_tool(
         # logged and re-raised as MCPToolError, not swallowed or left as a
         # raw, uncategorized exception the caller wasn't written to expect.
         duration_ms = int((time.monotonic() - started) * 1000)
+        description = _describe_exception(exc)
         mcp_tool_execution_repo.create(
             db,
             tool_name=tool_name,
@@ -99,9 +116,9 @@ def call_tool(
             status=MCPExecutionStatus.FAILED,
             mock_mode=settings.mcp_mock_mode,
             duration_ms=duration_ms,
-            error_message=f"{type(exc).__name__}: {exc}",
+            error_message=description,
         )
-        raise MCPToolError(str(exc)) from exc
+        raise MCPToolError(description) from exc
 
     duration_ms = int((time.monotonic() - started) * 1000)
     mcp_tool_execution_repo.create(

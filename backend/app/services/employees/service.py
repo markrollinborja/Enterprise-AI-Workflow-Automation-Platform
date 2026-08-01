@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.employee import Employee
+from app.models.user import User
 from app.repositories import department_repo, employee_repo
 from app.schemas.employee import EmployeeCreate, EmployeeResponse, EmployeeUpdate
+from app.services.workflows.service import start_workflow
 
 
 def _to_response(employee: Employee) -> EmployeeResponse:
@@ -46,7 +48,9 @@ def get_employee(db: Session, employee_id: UUID) -> EmployeeResponse:
     return _to_response(employee)
 
 
-def create_employee(db: Session, payload: EmployeeCreate) -> EmployeeResponse:
+def create_employee(
+    db: Session, payload: EmployeeCreate, *, current_user: User
+) -> EmployeeResponse:
     if department_repo.get_by_id(db, payload.department_id) is None:
         raise NotFoundError("Department not found")
     if payload.manager_id is not None and employee_repo.get_by_id(db, payload.manager_id) is None:
@@ -55,6 +59,24 @@ def create_employee(db: Session, payload: EmployeeCreate) -> EmployeeResponse:
         raise ConflictError("An employee with this work email already exists")
 
     created = employee_repo.create(db, **payload.model_dump())
+
+    # This is the real "employee.created" trigger for the onboarding
+    # workflow (workflows/employee_onboarding.json). Before this, the only
+    # place that ever called start_workflow for onboarding was the seed
+    # script's one-off demo instance for Jordan Lee — creating an employee
+    # through the real API silently did nothing beyond the INSERT. dedup_key
+    # is keyed on the employee id (one employee should only ever get one
+    # onboarding instance), not a random uuid like access-requests uses,
+    # matching seed.py's own dedup_key convention for this workflow.
+    start_workflow(
+        db,
+        workflow_key="employee_onboarding",
+        input_data={"employee_id": str(created.id)},
+        dedup_key=f"employee_onboarding:{created.id}",
+        initiated_by_user_id=current_user.id,
+        employee_id=created.id,
+    )
+
     # Re-fetch with relationships eager-loaded — db.refresh() after insert
     # only refreshes columns, not relationships.
     return _to_response(employee_repo.get_by_id(db, created.id))  # type: ignore[arg-type]

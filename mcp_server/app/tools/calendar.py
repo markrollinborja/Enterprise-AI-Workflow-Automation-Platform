@@ -53,12 +53,22 @@ def _real_schedule_calendar_event(
     start_time = datetime.fromisoformat(input_data.start_time_iso.replace("Z", "+00:00"))
     end_time = start_time + timedelta(minutes=input_data.duration_minutes)
 
+    # No "attendees" field: a bare service account (no Google Workspace
+    # domain-wide delegation — which needs a paid Workspace admin console,
+    # ruled out by this project's free-tier constraint) is not permitted to
+    # invite attendees to an event at all; Google returns a 403
+    # ("forbiddenForServiceAccounts") on every attempt, so retrying never
+    # helps. The event itself is still created for real — attendee_emails
+    # is folded into the description instead of lost, since there's no
+    # invite mechanism available to deliver it any other way.
+    description = input_data.description
+    if input_data.attendee_emails:
+        description = f"{description}\n\nAttendee(s): {', '.join(input_data.attendee_emails)}"
     event_body = {
         "summary": input_data.summary,
-        "description": input_data.description,
+        "description": description,
         "start": {"dateTime": start_time.isoformat()},
         "end": {"dateTime": end_time.isoformat()},
-        "attendees": [{"email": email} for email in input_data.attendee_emails],
     }
     created = (
         service.events()

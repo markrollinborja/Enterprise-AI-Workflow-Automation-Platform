@@ -31,6 +31,7 @@ from app.models.enums import (
     StepType,
     UserRole,
 )
+from app.models.user import User
 from app.models.workflow import WorkflowInstance, WorkflowStepInstance
 from app.repositories import (
     approval_request_repo,
@@ -407,19 +408,27 @@ def _create_approval_request(
         sequence_order=approval_config.sequence_order,
     )
 
-    # Only a specifically-assigned approver (manager_approval, resolved to
-    # the employee's actual manager) gets pushed a notification — a
+    # A specifically-assigned approver (manager_approval, resolved to the
+    # employee's actual manager) gets pushed a notification directly. A
     # role-pool approval (IT, Security: assigned_user_id is None) has no
-    # single owner to notify without fanning out to every user with that
-    # role, which this V1 doesn't do (no per-user "is this still relevant
-    # to me" state once one of them acts). Pool approvers still see it the
-    # moment they open their inbox (services/approvals/service.py); they
-    # just don't get proactively pinged for it.
+    # single owner, so it fans out to everyone holding that role instead —
+    # safe here because this fires only once the step actually reaches
+    # waiting_approval (see this function's docstring), which the engine
+    # guarantees can't happen before the prior sequential approval, so a
+    # pool never gets pinged early. Every recipient sees the same
+    # ApprovalRequest row; whoever acts first resolves it for the rest (no
+    # per-recipient "still relevant to you" state needed for this V1).
+    recipients: list[User]
     if assigned_user_id is not None:
         assignee = user_repo.get_by_id(db, assigned_user_id)
+        recipients = [assignee] if assignee is not None else []
+    else:
+        recipients = user_repo.list_by_role(db, approval_config.approver_role)
+
+    for recipient in recipients:
         notification_service.notify(
             db,
-            recipient=assignee,
+            recipient=recipient,
             notification_type=NotificationType.APPROVAL_REQUESTED,
             title=f"Approval needed: {step_def.name}",
             body=(

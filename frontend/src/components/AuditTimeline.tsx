@@ -1,5 +1,6 @@
 import type { AuditTimelineEntryResponse } from '../api/dashboard'
 import { StatusBadge } from './WorkflowInstanceList'
+import { Badge } from './ui/badge'
 
 // Shared by the Workflow Detail page's per-instance timeline and the
 // global Audit Log page (Phase 12d) — both render the exact same
@@ -11,10 +12,10 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString()
 }
 
-const ACTOR_TYPE_STYLES: Record<string, string> = {
-  user: 'bg-blue-100 text-blue-800',
-  ai: 'bg-purple-100 text-purple-800',
-  system: 'bg-slate-100 text-slate-700',
+const ACTOR_TYPE_VARIANT: Record<string, 'default' | 'muted' | 'warning'> = {
+  user: 'default',
+  ai: 'warning',
+  system: 'muted',
 }
 
 function AuditTimelineRow({
@@ -24,23 +25,20 @@ function AuditTimelineRow({
   entry: AuditTimelineEntryResponse
   showWorkflow: boolean
 }) {
-  const actorClass = ACTOR_TYPE_STYLES[entry.actor_type] ?? 'bg-slate-100 text-slate-700'
   const metadataEntries = Object.entries(entry.metadata).filter(([, v]) => v !== null && v !== '')
   return (
-    <li className="border-l-2 border-slate-200 py-1 pl-4">
+    <li className="border-l-2 border-border py-1.5 pl-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-400">{formatDate(entry.timestamp)}</span>
-        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${actorClass}`}>
-          {entry.actor}
-        </span>
-        <span className="text-sm text-slate-800">{entry.action.replace(/_/g, ' ')}</span>
+        <span className="text-xs text-muted-foreground/70">{formatDate(entry.timestamp)}</span>
+        <Badge variant={ACTOR_TYPE_VARIANT[entry.actor_type] ?? 'muted'}>{entry.actor}</Badge>
+        <span className="text-sm text-foreground">{entry.action.replace(/_/g, ' ')}</span>
         <StatusBadge status={entry.outcome} />
         {showWorkflow && entry.workflow_name && (
-          <span className="text-xs text-slate-400">— {entry.workflow_name}</span>
+          <span className="text-xs text-muted-foreground/70">— {entry.workflow_name}</span>
         )}
       </div>
       {metadataEntries.length > 0 && (
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {metadataEntries.map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
         </p>
       )}
@@ -59,7 +57,7 @@ interface AuditTimelineListProps {
 
 export function AuditTimelineList({ entries, showWorkflow = false }: AuditTimelineListProps) {
   if (entries.length === 0) {
-    return <p className="text-sm text-slate-500">No audit events yet.</p>
+    return <p className="text-sm text-muted-foreground">No audit events yet.</p>
   }
   return (
     <ul className="space-y-1">

@@ -1,29 +1,33 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchWorkflowInstances, type WorkflowInstanceSummaryResponse } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
+import { Badge } from './ui/badge'
+import { Select } from './ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import { Button } from './ui/button'
 
 // Shared across every status vocabulary in this app (instance, step,
 // approval) — a status this map doesn't recognize just falls back to plain
-// slate rather than needing its own map per vocabulary.
-const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-slate-100 text-slate-700',
-  running: 'bg-blue-100 text-blue-800',
-  waiting_approval: 'bg-amber-100 text-amber-800',
-  waiting_external: 'bg-amber-100 text-amber-800',
-  approved: 'bg-green-100 text-green-800',
-  completed: 'bg-green-100 text-green-800',
-  skipped: 'bg-slate-200 text-slate-600',
-  failed: 'bg-red-100 text-red-800',
-  rejected: 'bg-red-100 text-red-800',
-  cancelled: 'bg-slate-200 text-slate-600',
+// muted rather than needing its own map per vocabulary.
+const STATUS_BADGE_VARIANT: Record<
+  string,
+  'muted' | 'default' | 'warning' | 'success' | 'destructive'
+> = {
+  pending: 'muted',
+  running: 'default',
+  waiting_approval: 'warning',
+  waiting_external: 'warning',
+  approved: 'success',
+  completed: 'success',
+  skipped: 'muted',
+  failed: 'destructive',
+  rejected: 'destructive',
+  cancelled: 'muted',
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const className = STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-700'
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
-      {status.replace('_', ' ')}
-    </span>
+    <Badge variant={STATUS_BADGE_VARIANT[status] ?? 'muted'}>{status.replace('_', ' ')}</Badge>
   )
 }
 
@@ -73,72 +77,78 @@ export function WorkflowInstanceList({ fixedStatus, onSelectInstance }: Workflow
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         {fixedStatus ? (
-          <p className="text-sm text-slate-500">
-            Showing <span className="font-medium text-slate-700">{fixedStatus}</span> workflows
+          <p className="text-sm text-muted-foreground">
+            Showing <span className="font-medium text-foreground">{fixedStatus}</span> workflows
           </p>
         ) : (
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            {STATUS_FILTERS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+          <div className="w-56">
+            <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {STATUS_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         )}
-        <button onClick={load} className="text-xs text-slate-500 underline">
+        <Button variant="ghost" size="sm" onClick={load} className="text-muted-foreground">
           Refresh
-        </button>
+        </Button>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-500">Loading workflow instances…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Loading workflow instances…</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!isLoading && !error && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Workflow</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Employee</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Initiated By</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Current Step</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Status</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Started</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-600">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Workflow</TableHead>
+                <TableHead>Employee</TableHead>
+                <TableHead>Initiated By</TableHead>
+                <TableHead>Current Step</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Started</TableHead>
+                <TableHead>Updated</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {instances.map((instance) => (
-                <tr
+                <TableRow
                   key={instance.id}
                   onClick={() => onSelectInstance?.(instance.id)}
-                  className={onSelectInstance ? 'cursor-pointer hover:bg-slate-50' : undefined}
+                  className={onSelectInstance ? 'cursor-pointer' : undefined}
                 >
-                  <td className="px-4 py-2 font-medium text-slate-900">{instance.workflow_name}</td>
-                  <td className="px-4 py-2 text-slate-700">{instance.employee_name ?? '—'}</td>
-                  <td className="px-4 py-2 text-slate-700">{instance.initiated_by_name ?? '—'}</td>
-                  <td className="px-4 py-2 text-slate-700">{instance.current_step_key ?? '—'}</td>
-                  <td className="px-4 py-2">
+                  <TableCell className="font-medium text-foreground">
+                    {instance.workflow_name}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {instance.employee_name ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {instance.initiated_by_name ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {instance.current_step_key ?? '—'}
+                  </TableCell>
+                  <TableCell>
                     <StatusBadge status={instance.status} />
-                  </td>
-                  <td className="px-4 py-2 text-slate-500">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
                     {instance.started_at ? new Date(instance.started_at).toLocaleString() : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-slate-500">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
                     {new Date(instance.updated_at).toLocaleString()}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           {instances.length === 0 && (
-            <p className="p-4 text-sm text-slate-500">No workflow instances found.</p>
+            <p className="p-4 text-sm text-muted-foreground">No workflow instances found.</p>
           )}
-        </div>
+        </>
       )}
     </div>
   )

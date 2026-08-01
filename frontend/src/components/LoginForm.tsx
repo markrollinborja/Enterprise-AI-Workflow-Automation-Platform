@@ -1,5 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { Button } from './ui/button'
+import { Card, CardContent } from './ui/card'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 
 export function LoginForm() {
   const { login } = useAuth()
@@ -22,53 +26,60 @@ export function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <form
-        onSubmit={handleSubmit}
-        className="max-w-sm w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
-      >
-        <h1 className="text-xl font-semibold text-slate-900">Meridian Flow</h1>
-        <p className="mt-1 text-sm text-slate-500">Sign in to continue</p>
+    <div className="flex min-h-screen items-center justify-center bg-sidebar-background p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/30">
+            M
+          </div>
+          <p className="mt-4 text-lg font-semibold text-sidebar-foreground">Meridian Flow</p>
+          <p className="text-sm text-sidebar-muted-foreground">
+            Enterprise Employee Workflow Automation
+          </p>
+        </div>
 
-        <label className="mt-6 block text-sm font-medium text-slate-700">
-          Email
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </label>
+        <Card className="border-sidebar-border/50 shadow-xl">
+          <CardContent className="pt-6">
+            <p className="mb-4 text-sm font-medium text-foreground">Sign in to your account</p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
 
-        <label className="mt-4 block text-sm font-medium text-slate-700">
-          Password
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </label>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-6 w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
-        </button>
+              <Button type="submit" disabled={isSubmitting} className="w-full">
+                {isSubmitting ? 'Signing in…' : 'Sign in'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-        <p className="mt-4 text-xs text-slate-400">
-          Demo users: see backend/app/db/seed.py (e.g. ava.thompson@cordant.io, password
-          from your local .env / seed script).
+        <p className="mt-4 text-center text-xs text-sidebar-muted-foreground">
+          Demo users: see backend/app/db/seed.py (e.g. ava.thompson@cordant.io, password from
+          your local .env / seed script).
         </p>
-      </form>
+      </div>
     </div>
   )
 }

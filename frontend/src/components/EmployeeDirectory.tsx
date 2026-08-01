@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import {
   createEmployee,
   fetchEmployees,
@@ -9,18 +10,25 @@ import {
 } from '../api/employees'
 import { createDepartment, fetchDepartments, type DepartmentResponse } from '../api/departments'
 import { useAuth } from '../context/AuthContext'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { Card, CardContent } from './ui/card'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Select } from './ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  pending: 'bg-blue-100 text-blue-800',
-  on_leave: 'bg-amber-100 text-amber-800',
-  terminated: 'bg-slate-200 text-slate-600',
+const STATUS_BADGE_VARIANT: Record<string, 'success' | 'muted' | 'warning' | 'default'> = {
+  active: 'success',
+  pending: 'default',
+  on_leave: 'warning',
+  terminated: 'muted',
 }
 
-const RISK_STYLES: Record<string, string> = {
-  low: 'bg-slate-100 text-slate-700',
-  medium: 'bg-amber-100 text-amber-800',
-  high: 'bg-red-100 text-red-800',
+const RISK_BADGE_VARIANT: Record<string, 'muted' | 'warning' | 'destructive'> = {
+  low: 'muted',
+  medium: 'warning',
+  high: 'destructive',
 }
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contractor']
@@ -29,13 +37,14 @@ const STATUSES = ['active', 'pending', 'on_leave', 'terminated']
 
 const NEW_DEPARTMENT_VALUE = '__new_department__'
 
-function Badge({ label, styles }: { label: string; styles: Record<string, string> }) {
-  const className = styles[label] ?? 'bg-slate-100 text-slate-700'
+function StatusBadge({ label }: { label: string }) {
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
-      {label.replace('_', ' ')}
-    </span>
+    <Badge variant={STATUS_BADGE_VARIANT[label] ?? 'muted'}>{label.replace('_', ' ')}</Badge>
   )
+}
+
+function RiskBadge({ label }: { label: string }) {
+  return <Badge variant={RISK_BADGE_VARIANT[label] ?? 'muted'}>{label}</Badge>
 }
 
 const emptyCreateForm: EmployeeCreate = {
@@ -62,14 +71,13 @@ function CreateEmployeeForm({
   departments: DepartmentResponse[]
   employees: EmployeeResponse[]
   onDepartmentCreated: (department: DepartmentResponse) => void
-  onCreated: () => void
+  onCreated: (created: EmployeeResponse) => void
 }) {
   const [form, setForm] = useState<EmployeeCreate>(emptyCreateForm)
   const [newDepartmentName, setNewDepartmentName] = useState('')
   const [isAddingDepartment, setIsAddingDepartment] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   function update<K extends keyof EmployeeCreate>(key: K, value: EmployeeCreate[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -102,18 +110,14 @@ function CreateEmployeeForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setSuccessMessage(null)
     setIsSubmitting(true)
     try {
       const created = await createEmployee(token, {
         ...form,
         manager_id: form.manager_id || null,
       })
-      setSuccessMessage(
-        `${created.first_name} ${created.last_name} created — onboarding workflow started.`,
-      )
       setForm(emptyCreateForm)
-      onCreated()
+      onCreated(created)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create employee')
     } finally {
@@ -121,174 +125,163 @@ function CreateEmployeeForm({
     }
   }
 
-  const inputClass = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm'
-  const labelClass = 'block text-xs font-medium text-slate-600'
-
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-    >
-      <p className="mb-3 text-sm font-semibold text-slate-900">Create Employee</p>
+    <Card className="mb-4">
+      <CardContent className="pt-4">
+        <form onSubmit={handleSubmit}>
+          <p className="mb-3 text-sm font-semibold text-foreground">Create Employee</p>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label className={labelClass}>First name</label>
-          <input
-            required
-            className={inputClass}
-            value={form.first_name}
-            onChange={(e) => update('first_name', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Last name</label>
-          <input
-            required
-            className={inputClass}
-            value={form.last_name}
-            onChange={(e) => update('last_name', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Work email</label>
-          <input
-            required
-            type="email"
-            className={inputClass}
-            value={form.work_email}
-            onChange={(e) => update('work_email', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Job title</label>
-          <input
-            required
-            className={inputClass}
-            value={form.job_title}
-            onChange={(e) => update('job_title', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Department</label>
-          {isAddingDepartment ? (
-            <div className="flex gap-1">
-              <input
-                autoFocus
-                className={inputClass}
-                placeholder="New department name"
-                value={newDepartmentName}
-                onChange={(e) => setNewDepartmentName(e.target.value)}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="first_name">First name</Label>
+              <Input
+                id="first_name"
+                required
+                value={form.first_name}
+                onChange={(e) => update('first_name', e.target.value)}
               />
-              <button
-                type="button"
-                onClick={handleAddDepartment}
-                className="rounded-md bg-slate-900 px-2 text-xs font-medium text-white"
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAddingDepartment(false)}
-                className="rounded-md border border-slate-300 px-2 text-xs text-slate-600"
-              >
-                Cancel
-              </button>
             </div>
-          ) : (
-            <select
-              required
-              className={inputClass}
-              value={form.department_id}
-              onChange={(e) => handleDepartmentSelect(e.target.value)}
-            >
-              <option value="" disabled>
-                Select a department
-              </option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-              <option value={NEW_DEPARTMENT_VALUE}>+ Add new department…</option>
-            </select>
-          )}
-        </div>
-        <div>
-          <label className={labelClass}>Manager (optional)</label>
-          <select
-            className={inputClass}
-            value={form.manager_id ?? ''}
-            onChange={(e) => update('manager_id', e.target.value || null)}
-          >
-            <option value="">No manager</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.first_name} {emp.last_name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelClass}>Employment type</label>
-          <select
-            className={inputClass}
-            value={form.employment_type}
-            onChange={(e) => update('employment_type', e.target.value)}
-          >
-            {EMPLOYMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t.replace('_', ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelClass}>Start date</label>
-          <input
-            required
-            type="date"
-            className={inputClass}
-            value={form.start_date}
-            onChange={(e) => update('start_date', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Location</label>
-          <input
-            required
-            className={inputClass}
-            value={form.location}
-            onChange={(e) => update('location', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Risk level</label>
-          <select
-            className={inputClass}
-            value={form.risk_level}
-            onChange={(e) => update('risk_level', e.target.value)}
-          >
-            {RISK_LEVELS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="last_name">Last name</Label>
+              <Input
+                id="last_name"
+                required
+                value={form.last_name}
+                onChange={(e) => update('last_name', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="work_email">Work email</Label>
+              <Input
+                id="work_email"
+                required
+                type="email"
+                value={form.work_email}
+                onChange={(e) => update('work_email', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="job_title">Job title</Label>
+              <Input
+                id="job_title"
+                required
+                value={form.job_title}
+                onChange={(e) => update('job_title', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="department">Department</Label>
+              {isAddingDepartment ? (
+                <div className="flex gap-1.5">
+                  <Input
+                    autoFocus
+                    placeholder="New department name"
+                    value={newDepartmentName}
+                    onChange={(e) => setNewDepartmentName(e.target.value)}
+                  />
+                  <Button type="button" size="sm" onClick={handleAddDepartment}>
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAddingDepartment(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  id="department"
+                  required
+                  value={form.department_id}
+                  onChange={(e) => handleDepartmentSelect(e.target.value)}
+                >
+                  <option value="" disabled>
+                    Select a department
+                  </option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                  <option value={NEW_DEPARTMENT_VALUE}>+ Add new department…</option>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manager">Manager (optional)</Label>
+              <Select
+                id="manager"
+                value={form.manager_id ?? ''}
+                onChange={(e) => update('manager_id', e.target.value || null)}
+              >
+                <option value="">No manager</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.first_name} {emp.last_name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="employment_type">Employment type</Label>
+              <Select
+                id="employment_type"
+                value={form.employment_type}
+                onChange={(e) => update('employment_type', e.target.value)}
+              >
+                {EMPLOYMENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t.replace('_', ' ')}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="start_date">Start date</Label>
+              <Input
+                id="start_date"
+                required
+                type="date"
+                value={form.start_date}
+                onChange={(e) => update('start_date', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="location">Location</Label>
+              <Input
+                id="location"
+                required
+                value={form.location}
+                onChange={(e) => update('location', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="risk_level">Risk level</Label>
+              <Select
+                id="risk_level"
+                value={form.risk_level}
+                onChange={(e) => update('risk_level', e.target.value)}
+              >
+                {RISK_LEVELS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="mt-3 text-sm text-green-700">{successMessage}</p>}
+          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="mt-4 rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {isSubmitting ? 'Creating…' : 'Create Employee'}
-      </button>
-    </form>
+          <Button type="submit" disabled={isSubmitting} className="mt-4">
+            {isSubmitting ? 'Creating…' : 'Create Employee'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -335,32 +328,26 @@ function EditEmployeeRow({
     }
   }
 
-  const inputClass = 'w-full rounded-md border border-slate-300 px-2 py-1 text-xs'
-
   return (
-    <tr className="bg-slate-50">
-      <td className="px-4 py-2" colSpan={7}>
+    <TableRow className="bg-accent/40 hover:bg-accent/40">
+      <TableCell colSpan={7}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <input
-            className={inputClass}
+          <Input
             placeholder="First name"
             value={form.first_name ?? ''}
             onChange={(e) => update('first_name', e.target.value)}
           />
-          <input
-            className={inputClass}
+          <Input
             placeholder="Last name"
             value={form.last_name ?? ''}
             onChange={(e) => update('last_name', e.target.value)}
           />
-          <input
-            className={inputClass}
+          <Input
             placeholder="Job title"
             value={form.job_title ?? ''}
             onChange={(e) => update('job_title', e.target.value)}
           />
-          <select
-            className={inputClass}
+          <Select
             value={form.department_id ?? ''}
             onChange={(e) => update('department_id', e.target.value)}
           >
@@ -369,20 +356,15 @@ function EditEmployeeRow({
                 {d.name}
               </option>
             ))}
-          </select>
-          <select
-            className={inputClass}
-            value={form.status ?? ''}
-            onChange={(e) => update('status', e.target.value)}
-          >
+          </Select>
+          <Select value={form.status ?? ''} onChange={(e) => update('status', e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s.replace('_', ' ')}
               </option>
             ))}
-          </select>
-          <select
-            className={inputClass}
+          </Select>
+          <Select
             value={form.risk_level ?? ''}
             onChange={(e) => update('risk_level', e.target.value)}
           >
@@ -391,15 +373,13 @@ function EditEmployeeRow({
                 {r}
               </option>
             ))}
-          </select>
-          <input
-            className={inputClass}
+          </Select>
+          <Input
             placeholder="Location"
             value={form.location ?? ''}
             onChange={(e) => update('location', e.target.value)}
           />
-          <select
-            className={inputClass}
+          <Select
             value={form.employment_type ?? ''}
             onChange={(e) => update('employment_type', e.target.value)}
           >
@@ -408,28 +388,21 @@ function EditEmployeeRow({
                 {t.replace('_', ' ')}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
 
-        <div className="mt-2 flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
-          >
+        <div className="mt-3 flex gap-2">
+          <Button size="sm" onClick={handleSave} disabled={isSaving}>
             {isSaving ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            onClick={onCancel}
-            className="rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-600"
-          >
+          </Button>
+          <Button size="sm" variant="outline" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -441,6 +414,7 @@ export function EmployeeDirectory() {
   const [error, setError] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [banner, setBanner] = useState<string | null>(null)
 
   const isHrOrAdmin = user?.role === 'hr' || user?.role === 'administrator'
 
@@ -461,23 +435,33 @@ export function EmployeeDirectory() {
   }, [load])
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading employee directory…</p>
+    return <p className="text-sm text-muted-foreground">Loading employee directory…</p>
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">{error}</p>
+    return <p className="text-sm text-destructive">{error}</p>
   }
 
   return (
     <div>
+      {banner && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-md bg-success/10 px-4 py-3 text-sm text-success">
+          <span>{banner}</span>
+          <button
+            onClick={() => setBanner(null)}
+            className="shrink-0 text-success/70 hover:text-success"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {isHrOrAdmin && (
         <div className="mb-3">
-          <button
-            onClick={() => setShowCreateForm((prev) => !prev)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
-          >
+          <Button variant="outline" onClick={() => setShowCreateForm((prev) => !prev)}>
             {showCreateForm ? 'Close' : '+ New Employee'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -487,76 +471,78 @@ export function EmployeeDirectory() {
           departments={departments}
           employees={employees}
           onDepartmentCreated={(d) => setDepartments((prev) => [...prev, d])}
-          onCreated={() => {
+          onCreated={(created) => {
             load()
             setShowCreateForm(false)
+            setBanner(
+              `${created.first_name} ${created.last_name} created — onboarding workflow started. Check the Workflows tab (Administrator) or their Manager's Pending Approvals to track progress.`,
+            )
           }}
         />
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Name</th>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Title</th>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Department</th>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Manager</th>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Status</th>
-              <th className="px-4 py-2 text-left font-medium text-slate-600">Risk</th>
-              {isHrOrAdmin && <th className="px-4 py-2 text-left font-medium text-slate-600" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {employees.map((employee) =>
-              editingId === employee.id && token ? (
-                <EditEmployeeRow
-                  key={employee.id}
-                  employee={employee}
-                  departments={departments}
-                  token={token}
-                  onCancel={() => setEditingId(null)}
-                  onSaved={() => {
-                    setEditingId(null)
-                    load()
-                  }}
-                />
-              ) : (
-                <tr key={employee.id}>
-                  <td className="px-4 py-2">
-                    <div className="font-medium text-slate-900">
-                      {employee.first_name} {employee.last_name}
-                    </div>
-                    <div className="text-xs text-slate-400">{employee.work_email}</div>
-                  </td>
-                  <td className="px-4 py-2 text-slate-700">{employee.job_title}</td>
-                  <td className="px-4 py-2 text-slate-700">{employee.department_name ?? '—'}</td>
-                  <td className="px-4 py-2 text-slate-700">{employee.manager_name ?? '—'}</td>
-                  <td className="px-4 py-2">
-                    <Badge label={employee.status} styles={STATUS_STYLES} />
-                  </td>
-                  <td className="px-4 py-2">
-                    <Badge label={employee.risk_level} styles={RISK_STYLES} />
-                  </td>
-                  {isHrOrAdmin && (
-                    <td className="px-4 py-2">
-                      <button
-                        onClick={() => setEditingId(employee.id)}
-                        className="text-xs font-medium text-slate-600 underline"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-        {employees.length === 0 && (
-          <p className="p-4 text-sm text-slate-500">No employees found.</p>
-        )}
-      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Title</TableHead>
+            <TableHead>Department</TableHead>
+            <TableHead>Manager</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Risk</TableHead>
+            {isHrOrAdmin && <TableHead />}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {employees.map((employee) =>
+            editingId === employee.id && token ? (
+              <EditEmployeeRow
+                key={employee.id}
+                employee={employee}
+                departments={departments}
+                token={token}
+                onCancel={() => setEditingId(null)}
+                onSaved={() => {
+                  setEditingId(null)
+                  load()
+                }}
+              />
+            ) : (
+              <TableRow key={employee.id}>
+                <TableCell>
+                  <div className="font-medium text-foreground">
+                    {employee.first_name} {employee.last_name}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{employee.work_email}</div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{employee.job_title}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {employee.department_name ?? '—'}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {employee.manager_name ?? '—'}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge label={employee.status} />
+                </TableCell>
+                <TableCell>
+                  <RiskBadge label={employee.risk_level} />
+                </TableCell>
+                {isHrOrAdmin && (
+                  <TableCell>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingId(employee.id)}>
+                      Edit
+                    </Button>
+                  </TableCell>
+                )}
+              </TableRow>
+            ),
+          )}
+        </TableBody>
+      </Table>
+      {employees.length === 0 && (
+        <p className="p-4 text-sm text-muted-foreground">No employees found.</p>
+      )}
     </div>
   )
 }

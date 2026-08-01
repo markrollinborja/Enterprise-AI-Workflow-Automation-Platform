@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchNotifications, markNotificationRead, type NotificationResponse } from '../api/notifications'
 import { useAuth } from '../context/AuthContext'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
+import { Separator } from './ui/separator'
+import { cn } from '../lib/utils'
 
 function timeAgo(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime()
@@ -43,49 +47,45 @@ export function NotificationsPanel() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading notifications…</p>
+    return <p className="text-sm text-muted-foreground">Loading notifications…</p>
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">{error}</p>
+    return <p className="text-sm text-destructive">{error}</p>
   }
 
   const unreadCount = notifications.filter((n) => !n.read_at).length
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-        <span className="text-xs text-slate-500">
+    <Card>
+      <div className="flex items-center justify-between px-4 py-2.5">
+        <span className="text-xs text-muted-foreground">
           {unreadCount} unread of {notifications.length}
         </span>
       </div>
-      <ul className="divide-y divide-slate-100">
+      <Separator />
+      <ul className="divide-y divide-border">
         {notifications.map((n) => (
           <li
             key={n.id}
-            className={`flex items-start justify-between gap-3 px-4 py-3 ${
-              n.read_at ? '' : 'bg-blue-50/50'
-            }`}
+            className={cn('flex items-start justify-between gap-3 px-4 py-3', !n.read_at && 'bg-accent/50')}
           >
             <div>
-              <p className="text-sm font-medium text-slate-900">{n.title}</p>
-              <p className="mt-0.5 text-sm text-slate-600">{n.body}</p>
-              <p className="mt-1 text-xs text-slate-400">{timeAgo(n.created_at)}</p>
+              <p className="text-sm font-medium text-foreground">{n.title}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{n.body}</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">{timeAgo(n.created_at)}</p>
             </div>
             {!n.read_at && (
-              <button
-                onClick={() => handleMarkRead(n.id)}
-                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600"
-              >
+              <Button variant="outline" size="sm" onClick={() => handleMarkRead(n.id)} className="shrink-0">
                 Mark read
-              </button>
+              </Button>
             )}
           </li>
         ))}
       </ul>
       {notifications.length === 0 && (
-        <p className="p-4 text-sm text-slate-500">No notifications yet.</p>
+        <p className="p-4 text-sm text-muted-foreground">No notifications yet.</p>
       )}
-    </div>
+    </Card>
   )
 }

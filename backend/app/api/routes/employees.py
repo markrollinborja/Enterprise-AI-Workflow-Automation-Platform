@@ -37,9 +37,9 @@ def get_employee(
 def create_employee(
     payload: EmployeeCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(UserRole.HR, UserRole.ADMINISTRATOR)),
+    current_user: User = Depends(require_role(UserRole.HR, UserRole.ADMINISTRATOR)),
 ) -> EmployeeResponse:
-    return employee_service.create_employee(db, payload)
+    return employee_service.create_employee(db, payload, current_user=current_user)
 
 
 @router.patch("/{employee_id}", response_model=EmployeeResponse)

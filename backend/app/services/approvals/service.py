@@ -19,7 +19,7 @@ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedEr
 from app.models.approval import ApprovalRequest
 from app.models.enums import ApprovalRequestStatus, UserRole
 from app.models.user import User
-from app.repositories import approval_decision_repo, approval_request_repo
+from app.repositories import approval_decision_repo, approval_request_repo, notification_repo
 from app.schemas.approval import ApprovalRequestResponse
 from app.services.workflows.service import resume_workflow_step
 
@@ -108,6 +108,19 @@ def decide(
     approval_request.status = decision_status
     db.add(approval_request)
     db.commit()
+
+    # Clears the "Approval needed" in-app notification that put this in the
+    # deciding user's queue — without this, acting on the approval here
+    # left that notification unread forever unless separately dismissed
+    # from the Notifications panel (a confusing double action for the same
+    # thing). See notification_repo.mark_approval_requested_read's
+    # docstring for why user_id + workflow_instance_id is precise enough
+    # without a dedicated step_instance_id link.
+    notification_repo.mark_approval_requested_read(
+        db,
+        user_id=current_user.id,
+        workflow_instance_id=approval_request.workflow_instance_id,
+    )
 
     # Advances (or terminates) the underlying workflow instance — the real
     # counterpart to what Phase 6's tests simulated by calling this

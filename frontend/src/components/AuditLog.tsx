@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchAuditLog, type AuditTimelineEntryResponse } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
 import { AuditTimelineList } from './AuditTimeline'
+import { Button } from './ui/button'
+import { Card, CardContent } from './ui/card'
 
 export function AuditLog() {
   const { token } = useAuth()
@@ -25,22 +27,24 @@ export function AuditLog() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Most recent activity across every workflow instance — see a specific instance's
           Workflow Detail page for its full timeline in order.
         </p>
-        <button onClick={load} className="text-xs text-slate-500 underline">
+        <Button variant="ghost" size="sm" onClick={load} className="text-muted-foreground">
           Refresh
-        </button>
+        </Button>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-500">Loading audit log…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Loading audit log…</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!isLoading && !error && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <AuditTimelineList entries={entries} showWorkflow />
-        </div>
+        <Card>
+          <CardContent className="pt-4">
+            <AuditTimelineList entries={entries} showWorkflow />
+          </CardContent>
+        </Card>
       )}
     </div>
   )

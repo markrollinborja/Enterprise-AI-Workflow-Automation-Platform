@@ -62,7 +62,14 @@ from app.services.integrations.mcp_client import MCPToolError
 # produced a final structured answer by then, that's treated the same as
 # any other AI failure (see the "ran out of rounds" fallthrough below) —
 # not an infinite loop against OpenAI's API.
-_MAX_TOOL_ROUNDS = 2
+#
+# 3, not 2: observed in a real-mode run that a small/cheap model can spend
+# its budget calling lookup_employee a second time (redundantly) instead of
+# finalizing, exhausting a 2-round budget on tool calls alone with no round
+# left to actually answer. One extra round of slack is cheap insurance
+# against that without meaningfully loosening the "not unbounded" guarantee
+# this constant exists for.
+_MAX_TOOL_ROUNDS = 3
 
 # `strict: True` is required here, not optional: this schema is passed to
 # client.chat.completions.parse() alongside response_format (structured

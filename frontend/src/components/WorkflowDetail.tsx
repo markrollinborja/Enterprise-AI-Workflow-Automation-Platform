@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
   fetchWorkflowInstanceDetail,
@@ -12,6 +13,8 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { AuditTimelineList } from './AuditTimeline'
 import { StatusBadge } from './WorkflowInstanceList'
+import { Button } from './ui/button'
+import { Card, CardContent } from './ui/card'
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : '—'
@@ -20,7 +23,7 @@ function formatDate(value: string | null): string {
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
       <div className="space-y-2">{children}</div>
@@ -34,25 +37,19 @@ function SectionCard({ title, children }: { title: string; children: React.React
  * frontend can build a bespoke form around. */
 function KeyValueList({ data }: { data: Record<string, unknown> | null }) {
   if (!data || Object.keys(data).length === 0) {
-    return <p className="text-xs text-slate-400">—</p>
+    return <p className="text-xs text-muted-foreground/70">—</p>
   }
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
       {Object.entries(data).map(([key, value]) => (
         <div key={key} className="contents">
-          <dt className="text-slate-500">{key}</dt>
-          <dd className="text-slate-700">
+          <dt className="text-muted-foreground">{key}</dt>
+          <dd className="text-foreground">
             {typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}
           </dd>
         </div>
       ))}
     </dl>
-  )
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">{children}</div>
   )
 }
 
@@ -65,43 +62,39 @@ interface StepCardProps {
 function StepCard({ step, onRetry, isRetrying }: StepCardProps) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-900">{step.step_key}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {step.step_type} · attempt {step.attempt_count}
-            {step.external_ref ? ` · ref ${step.external_ref}` : ''}
-          </p>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">{step.step_key}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {step.step_type} · attempt {step.attempt_count}
+              {step.external_ref ? ` · ref ${step.external_ref}` : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={step.status} />
+            {step.status === 'failed' && (
+              <Button variant="outline" size="sm" onClick={() => onRetry(step.step_key)} disabled={isRetrying}>
+                {isRetrying ? 'Retrying…' : 'Retry'}
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={step.status} />
-          {step.status === 'failed' && (
-            <button
-              onClick={() => onRetry(step.step_key)}
-              disabled={isRetrying}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
-            >
-              {isRetrying ? 'Retrying…' : 'Retry'}
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-slate-400">
-        Started {formatDate(step.started_at)} · Completed {formatDate(step.completed_at)}
-      </p>
-      {step.retried_at && (
-        <p className="mt-1 text-xs text-slate-400">
-          Manually retried by {step.retried_by_name} on {formatDate(step.retried_at)}
+        <p className="mt-2 text-xs text-muted-foreground/70">
+          Started {formatDate(step.started_at)} · Completed {formatDate(step.completed_at)}
         </p>
-      )}
-      {step.error_message && (
-        <p className="mt-2 text-xs text-red-600">{step.error_message}</p>
-      )}
-      {step.output_data && (
-        <div className="mt-2">
-          <KeyValueList data={step.output_data} />
-        </div>
-      )}
+        {step.retried_at && (
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            Manually retried by {step.retried_by_name} on {formatDate(step.retried_at)}
+          </p>
+        )}
+        {step.error_message && <p className="mt-2 text-xs text-destructive">{step.error_message}</p>}
+        {step.output_data && (
+          <div className="mt-2">
+            <KeyValueList data={step.output_data} />
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -109,27 +102,29 @@ function StepCard({ step, onRetry, isRetrying }: StepCardProps) {
 function ApprovalCard({ approval }: { approval: ApprovalDetailResponse }) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-900">{approval.step_key}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Requires: {approval.approver_role}
-            {approval.assigned_user_name ? ` · assigned to ${approval.assigned_user_name}` : ' · role pool'}
-          </p>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">{approval.step_key}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Requires: {approval.approver_role}
+              {approval.assigned_user_name ? ` · assigned to ${approval.assigned_user_name}` : ' · role pool'}
+            </p>
+          </div>
+          <StatusBadge status={approval.status} />
         </div>
-        <StatusBadge status={approval.status} />
-      </div>
-      {approval.decisions.length > 0 && (
-        <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2">
-          {approval.decisions.map((decision) => (
-            <li key={decision.id} className="text-xs text-slate-600">
-              <span className="font-medium text-slate-800">{decision.decided_by_name}</span>{' '}
-              {decision.decision} on {formatDate(decision.decided_at)}
-              {decision.notes ? ` — "${decision.notes}"` : ''}
-            </li>
-          ))}
-        </ul>
-      )}
+        {approval.decisions.length > 0 && (
+          <ul className="mt-2 space-y-1 border-t border-border pt-2">
+            {approval.decisions.map((decision) => (
+              <li key={decision.id} className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{decision.decided_by_name}</span>{' '}
+                {decision.decision} on {formatDate(decision.decided_at)}
+                {decision.notes ? ` — "${decision.notes}"` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -137,31 +132,33 @@ function ApprovalCard({ approval }: { approval: ApprovalDetailResponse }) {
 function AIExecutionCard({ execution }: { execution: AIExecutionDetailResponse }) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-900">{execution.task_type}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {execution.step_key} · {execution.model_used}
-            {execution.confidence_score !== null
-              ? ` · confidence ${(execution.confidence_score * 100).toFixed(0)}%`
-              : ''}
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">{execution.task_type}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {execution.step_key} · {execution.model_used}
+              {execution.confidence_score !== null
+                ? ` · confidence ${(execution.confidence_score * 100).toFixed(0)}%`
+                : ''}
+            </p>
+          </div>
+          <StatusBadge status={execution.status} />
+        </div>
+        {execution.requires_human_review !== null && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Human review required: {execution.requires_human_review ? 'yes' : 'no'}
           </p>
-        </div>
-        <StatusBadge status={execution.status} />
-      </div>
-      {execution.requires_human_review !== null && (
-        <p className="mt-2 text-xs text-slate-500">
-          Human review required: {execution.requires_human_review ? 'yes' : 'no'}
-        </p>
-      )}
-      {execution.error_message && (
-        <p className="mt-2 text-xs text-red-600">{execution.error_message}</p>
-      )}
-      {execution.output_json && (
-        <div className="mt-2">
-          <KeyValueList data={execution.output_json} />
-        </div>
-      )}
+        )}
+        {execution.error_message && (
+          <p className="mt-2 text-xs text-destructive">{execution.error_message}</p>
+        )}
+        {execution.output_json && (
+          <div className="mt-2">
+            <KeyValueList data={execution.output_json} />
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -169,25 +166,27 @@ function AIExecutionCard({ execution }: { execution: AIExecutionDetailResponse }
 function MCPToolExecutionCard({ execution }: { execution: MCPToolExecutionDetailResponse }) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-900">{execution.tool_name}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Called by {execution.caller}
-            {execution.mock_mode ? ' · mock mode' : ' · real'}
-            {execution.duration_ms !== null ? ` · ${execution.duration_ms}ms` : ''}
-          </p>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">{execution.tool_name}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Called by {execution.caller}
+              {execution.mock_mode ? ' · mock mode' : ' · real'}
+              {execution.duration_ms !== null ? ` · ${execution.duration_ms}ms` : ''}
+            </p>
+          </div>
+          <StatusBadge status={execution.status} />
         </div>
-        <StatusBadge status={execution.status} />
-      </div>
-      {execution.error_message && (
-        <p className="mt-2 text-xs text-red-600">{execution.error_message}</p>
-      )}
-      {execution.output_result && (
-        <div className="mt-2">
-          <KeyValueList data={execution.output_result} />
-        </div>
-      )}
+        {execution.error_message && (
+          <p className="mt-2 text-xs text-destructive">{execution.error_message}</p>
+        )}
+        {execution.output_result && (
+          <div className="mt-2">
+            <KeyValueList data={execution.output_result} />
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -195,20 +194,22 @@ function MCPToolExecutionCard({ execution }: { execution: MCPToolExecutionDetail
 function NotificationCard({ notification }: { notification: NotificationDetailResponse }) {
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-slate-900">{notification.title}</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            To {notification.recipient_name} via {notification.channel} · {notification.type}
-          </p>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">{notification.title}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              To {notification.recipient_name} via {notification.channel} · {notification.type}
+            </p>
+          </div>
+          <StatusBadge status={notification.status} />
         </div>
-        <StatusBadge status={notification.status} />
-      </div>
-      <p className="mt-2 text-xs text-slate-600">{notification.body}</p>
-      <p className="mt-1 text-xs text-slate-400">
-        Sent {formatDate(notification.created_at)}
-        {notification.read_at ? ` · read ${formatDate(notification.read_at)}` : ''}
-      </p>
+        <p className="mt-2 text-xs text-muted-foreground">{notification.body}</p>
+        <p className="mt-1 text-xs text-muted-foreground/70">
+          Sent {formatDate(notification.created_at)}
+          {notification.read_at ? ` · read ${formatDate(notification.read_at)}` : ''}
+        </p>
+      </CardContent>
     </Card>
   )
 }
@@ -259,36 +260,39 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="text-xs text-slate-500 underline">
-        ← Back
-      </button>
+      <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 text-muted-foreground">
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Button>
 
-      {isLoading && <p className="text-sm text-slate-500">Loading workflow instance…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {retryError && <p className="text-sm text-red-600">{retryError}</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Loading workflow instance…</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {retryError && <p className="text-sm text-destructive">{retryError}</p>}
 
       {detail && (
         <>
           <Card>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-lg font-semibold text-slate-900">{detail.workflow_name}</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {detail.employee_name ? `For ${detail.employee_name} · ` : ''}
-                  Initiated by {detail.initiated_by_name ?? 'System'}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Started {formatDate(detail.started_at)} · Updated {formatDate(detail.updated_at)}
-                  {detail.completed_at ? ` · Completed ${formatDate(detail.completed_at)}` : ''}
-                </p>
-                {detail.current_step_key && (
-                  <p className="mt-1 text-xs text-slate-400">
-                    Current step: {detail.current_step_key}
+            <CardContent className="pt-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-lg font-semibold text-foreground">{detail.workflow_name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {detail.employee_name ? `For ${detail.employee_name} · ` : ''}
+                    Initiated by {detail.initiated_by_name ?? 'System'}
                   </p>
-                )}
+                  <p className="mt-1 text-xs text-muted-foreground/70">
+                    Started {formatDate(detail.started_at)} · Updated {formatDate(detail.updated_at)}
+                    {detail.completed_at ? ` · Completed ${formatDate(detail.completed_at)}` : ''}
+                  </p>
+                  {detail.current_step_key && (
+                    <p className="mt-1 text-xs text-muted-foreground/70">
+                      Current step: {detail.current_step_key}
+                    </p>
+                  )}
+                </div>
+                <StatusBadge status={detail.status} />
               </div>
-              <StatusBadge status={detail.status} />
-            </div>
+            </CardContent>
           </Card>
 
           <SectionCard title="Steps">
@@ -335,9 +339,11 @@ export function WorkflowDetail({ instanceId, onBack }: WorkflowDetailProps) {
           )}
 
           <SectionCard title="Audit Timeline">
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <AuditTimelineList entries={detail.audit_timeline} />
-            </div>
+            <Card>
+              <CardContent className="pt-4">
+                <AuditTimelineList entries={detail.audit_timeline} />
+              </CardContent>
+            </Card>
           </SectionCard>
         </>
       )}

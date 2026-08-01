@@ -46,7 +46,15 @@ class Settings(BaseSettings):
 
     # AI — see docs/architecture/mcp-architecture.md
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1-nano"
+    # gpt-4o-mini, not gpt-4.1-nano: observed in a real-mode run that nano
+    # is unreliable at this app's bounded agentic tool-calling (it spent
+    # both rounds calling lookup_employee instead of answering, tripping
+    # the "no parseable response" fallback every time). 4o-mini is still a
+    # low-cost model but has much more consistent tool-calling + structured
+    # -output behavior — the right "low-cost" tradeoff per the project's
+    # cost-conscious-but-reliable requirement, not the cheapest option that
+    # technically qualifies.
+    openai_model: str = "gpt-4o-mini"
     # The openai SDK's own default is 600s (5s connect + up to 600s total,
     # see openai._constants.DEFAULT_TIMEOUT) — far too generous for a
     # single structured-output completion against a small catalog. A hang

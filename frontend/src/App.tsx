@@ -1,4 +1,16 @@
 import { useState } from 'react'
+import {
+  AlertTriangle,
+  Bell,
+  ClipboardCheck,
+  Home,
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  ScrollText,
+  Users,
+  Workflow,
+} from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoginForm } from './components/LoginForm'
 import { EmployeeDirectory } from './components/EmployeeDirectory'
@@ -8,7 +20,11 @@ import { WorkflowInstanceList } from './components/WorkflowInstanceList'
 import { WorkflowDetail } from './components/WorkflowDetail'
 import { AuditLog } from './components/AuditLog'
 import { AccessRequestForm } from './components/AccessRequestForm'
+import { NotificationBell } from './components/NotificationBell'
 import { NotificationsPanel } from './components/NotificationsPanel'
+import { Avatar } from './components/ui/avatar'
+import { Badge } from './components/ui/badge'
+import { cn } from './lib/utils'
 
 // Plain state-based view switching, not react-router-dom — this project's
 // dashboard is a handful of admin-only screens behind one login, not an app
@@ -21,26 +37,71 @@ type View = 'home' | 'overview' | 'workflows' | 'failed' | 'workflow-detail' | '
 // this remembers which list to return to on "Back" instead of hardcoding it.
 type ListView = 'workflows' | 'failed'
 
-function TabButton({
+const VIEW_TITLES: Record<View, string> = {
+  home: 'Home',
+  overview: 'Overview',
+  workflows: 'Workflows',
+  failed: 'Failed Workflows',
+  'workflow-detail': 'Workflow Detail',
+  'audit-log': 'Audit Log',
+}
+
+const VIEW_DESCRIPTIONS: Partial<Record<View, string>> = {
+  home: 'Your notifications, approvals, and requests in one place.',
+  overview: 'Platform-wide workflow health at a glance.',
+  workflows: 'Every workflow instance across the company.',
+  failed: 'Workflows that need manual attention.',
+  'audit-log': 'A chronological record of everything the platform has done.',
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  employee: 'Employee',
+  manager: 'Manager',
+  hr: 'HR',
+  it: 'IT',
+  security: 'Security',
+  administrator: 'Administrator',
+}
+
+function NavItem({
   active,
   onClick,
+  icon: Icon,
   children,
 }: {
   active: boolean
   onClick: () => void
+  icon: React.ComponentType<{ className?: string }>
   children: React.ReactNode
 }) {
   return (
     <button
       onClick={onClick}
-      className={`border-b-2 px-3 py-2 text-sm font-medium ${
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
         active
-          ? 'border-slate-900 text-slate-900'
-          : 'border-transparent text-slate-500 hover:text-slate-700'
-      }`}
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+          : 'text-sidebar-muted-foreground hover:bg-white/5 hover:text-sidebar-foreground',
+      )}
     >
+      <Icon className="h-4 w-4 shrink-0" />
       {children}
     </button>
+  )
+}
+
+function SectionHeading({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  children: React.ReactNode
+}) {
+  return (
+    <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+      <Icon className="h-4 w-4 text-primary" />
+      {children}
+    </h2>
   )
 }
 
@@ -60,96 +121,144 @@ function AuthenticatedView() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        <div className="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="flex h-screen overflow-hidden bg-background">
+      <aside className="flex h-screen w-64 shrink-0 flex-col overflow-y-auto bg-sidebar-background text-sidebar-foreground">
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground">
+            M
+          </div>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Meridian Flow</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Enterprise Employee Workflow Automation Platform
-            </p>
-            <p className="mt-3 text-sm text-slate-700">
-              Signed in as <span className="font-medium">{user.full_name}</span>
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              {user.email} · role: {user.role}
-            </p>
+            <p className="text-sm font-semibold leading-tight">Meridian Flow</p>
+            <p className="text-xs text-sidebar-muted-foreground">Cordant Industries</p>
+          </div>
+        </div>
+
+        <div className="mx-5 border-t border-sidebar-border" />
+
+        <nav className="flex flex-1 flex-col gap-1 p-3">
+          <NavItem active={view === 'home'} onClick={() => setView('home')} icon={Home}>
+            Home
+          </NavItem>
+          {isAdmin && (
+            <>
+              <NavItem
+                active={view === 'overview'}
+                onClick={() => setView('overview')}
+                icon={LayoutDashboard}
+              >
+                Overview
+              </NavItem>
+              <NavItem
+                active={view === 'workflows'}
+                onClick={() => setView('workflows')}
+                icon={Workflow}
+              >
+                Workflows
+              </NavItem>
+              <NavItem active={view === 'failed'} onClick={() => setView('failed')} icon={AlertTriangle}>
+                Failed Workflows
+              </NavItem>
+              <NavItem
+                active={view === 'audit-log'}
+                onClick={() => setView('audit-log')}
+                icon={ScrollText}
+              >
+                Audit Log
+              </NavItem>
+            </>
+          )}
+        </nav>
+
+        <div className="mx-5 border-t border-sidebar-border" />
+
+        <div className="p-3">
+          <div className="flex items-center gap-2.5 rounded-md p-2">
+            <Avatar name={user.full_name} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user.full_name}</p>
+              <p className="truncate text-xs text-sidebar-muted-foreground">{user.email}</p>
+            </div>
+          </div>
+          <div className="px-2">
+            <Badge
+              variant="outline"
+              className="border-sidebar-border text-sidebar-muted-foreground"
+            >
+              {ROLE_LABELS[user.role] ?? user.role}
+            </Badge>
           </div>
           <button
             onClick={logout}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+            className="mt-2 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-muted-foreground transition-colors hover:bg-white/5 hover:text-sidebar-foreground"
           >
+            <LogOut className="h-4 w-4" />
             Sign out
           </button>
         </div>
+      </aside>
 
-        {isAdmin && (
-          <nav className="mt-6 flex gap-1 border-b border-slate-200">
-            <TabButton active={view === 'home'} onClick={() => setView('home')}>
-              Home
-            </TabButton>
-            <TabButton active={view === 'overview'} onClick={() => setView('overview')}>
-              Overview
-            </TabButton>
-            <TabButton active={view === 'workflows'} onClick={() => setView('workflows')}>
-              Workflows
-            </TabButton>
-            <TabButton active={view === 'failed'} onClick={() => setView('failed')}>
-              Failed Workflows
-            </TabButton>
-            <TabButton active={view === 'audit-log'} onClick={() => setView('audit-log')}>
-              Audit Log
-            </TabButton>
-          </nav>
-        )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-8 shadow-sm">
+          <div>
+            <h1 className="text-lg font-semibold leading-tight text-foreground">
+              {view === 'workflow-detail' ? 'Workflow Detail' : VIEW_TITLES[view]}
+            </h1>
+            {VIEW_DESCRIPTIONS[view] && (
+              <p className="text-xs text-muted-foreground">{VIEW_DESCRIPTIONS[view]}</p>
+            )}
+          </div>
+          <NotificationBell onClick={() => setView('home')} />
+        </header>
 
-        <div className="mt-6">
-          {view === 'overview' && isAdmin && <DashboardOverview />}
+        <main className="flex-1 overflow-y-auto p-8">
+          <div className="mx-auto max-w-6xl">
+            {view === 'overview' && isAdmin && <DashboardOverview />}
 
-          {view === 'workflows' && isAdmin && (
-            <WorkflowInstanceList onSelectInstance={(id) => openDetail(id, 'workflows')} />
-          )}
+            {view === 'workflows' && isAdmin && (
+              <WorkflowInstanceList onSelectInstance={(id) => openDetail(id, 'workflows')} />
+            )}
 
-          {view === 'failed' && isAdmin && (
-            <WorkflowInstanceList
-              fixedStatus="failed"
-              onSelectInstance={(id) => openDetail(id, 'failed')}
-            />
-          )}
+            {view === 'failed' && isAdmin && (
+              <WorkflowInstanceList
+                fixedStatus="failed"
+                onSelectInstance={(id) => openDetail(id, 'failed')}
+              />
+            )}
 
-          {view === 'workflow-detail' && isAdmin && selectedInstanceId && (
-            <WorkflowDetail
-              instanceId={selectedInstanceId}
-              onBack={() => setView(detailOrigin)}
-            />
-          )}
+            {view === 'workflow-detail' && isAdmin && selectedInstanceId && (
+              <WorkflowDetail
+                instanceId={selectedInstanceId}
+                onBack={() => setView(detailOrigin)}
+              />
+            )}
 
-          {view === 'audit-log' && isAdmin && <AuditLog />}
+            {view === 'audit-log' && isAdmin && <AuditLog />}
 
-          {view === 'home' && (
-            <>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Notifications
-              </h2>
-              <NotificationsPanel />
+            {view === 'home' && (
+              <div className="space-y-10">
+                <section>
+                  <SectionHeading icon={Bell}>Notifications</SectionHeading>
+                  <NotificationsPanel />
+                </section>
 
-              <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Pending Approvals
-              </h2>
-              <ApprovalInbox />
+                <section>
+                  <SectionHeading icon={ClipboardCheck}>Pending Approvals</SectionHeading>
+                  <ApprovalInbox />
+                </section>
 
-              <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Request Software Access
-              </h2>
-              <AccessRequestForm />
+                <section>
+                  <SectionHeading icon={KeyRound}>Request Software Access</SectionHeading>
+                  <AccessRequestForm />
+                </section>
 
-              <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Employee Directory
-              </h2>
-              <EmployeeDirectory />
-            </>
-          )}
-        </div>
+                <section>
+                  <SectionHeading icon={Users}>Employee Directory</SectionHeading>
+                  <EmployeeDirectory />
+                </section>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   )
@@ -159,7 +268,7 @@ function AppShell() {
   const { user, isLoading } = useAuth()
 
   if (isLoading) {
-    return <div className="min-h-screen bg-slate-50" />
+    return <div className="min-h-screen bg-background" />
   }
 
   return user ? <AuthenticatedView /> : <LoginForm />

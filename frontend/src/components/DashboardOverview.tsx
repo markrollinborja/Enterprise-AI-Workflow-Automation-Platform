@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchDashboardSummary, type DashboardSummaryResponse } from '../api/dashboard'
 import { useAuth } from '../context/AuthContext'
+import { Card, CardContent } from './ui/card'
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return '—'
@@ -11,31 +12,39 @@ function formatDuration(seconds: number | null): string {
 
 function StatCard({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
-    </div>
+    <Card>
+      <CardContent className="pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+      </CardContent>
+    </Card>
   )
 }
 
 function BreakdownCard({ title, data }: { title: string; data: Record<string, number> }) {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1])
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
-      {entries.length === 0 ? (
-        <p className="text-sm text-slate-400">No data yet.</p>
-      ) : (
-        <ul className="space-y-1">
-          {entries.map(([name, count]) => (
-            <li key={name} className="flex items-center justify-between text-sm">
-              <span className="text-slate-700">{name}</span>
-              <span className="font-medium text-slate-900">{count}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <Card>
+      <CardContent className="pt-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </p>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground/70">No data yet.</p>
+        ) : (
+          <ul className="space-y-1">
+            {entries.map(([name, count]) => (
+              <li key={name} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{name}</span>
+                <span className="font-medium text-foreground">{count}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -56,11 +65,11 @@ export function DashboardOverview() {
   }, [token])
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading overview…</p>
+    return <p className="text-sm text-muted-foreground">Loading overview…</p>
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">{error}</p>
+    return <p className="text-sm text-destructive">{error}</p>
   }
 
   if (!summary) {

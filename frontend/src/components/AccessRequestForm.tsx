@@ -2,20 +2,17 @@ import { useEffect, useState } from 'react'
 import { fetchApplications, type ApplicationResponse } from '../api/applications'
 import { submitAccessRequest, type AccessRequestResponse } from '../api/access-requests'
 import { useAuth } from '../context/AuthContext'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { Card, CardContent } from './ui/card'
+import { Label } from './ui/label'
+import { Select } from './ui/select'
+import { Textarea } from './ui/textarea'
 
-const RISK_STYLES: Record<string, string> = {
-  low: 'bg-slate-100 text-slate-700',
-  medium: 'bg-amber-100 text-amber-800',
-  high: 'bg-red-100 text-red-800',
-}
-
-function RiskBadge({ label }: { label: string }) {
-  const className = RISK_STYLES[label] ?? 'bg-slate-100 text-slate-700'
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
-      {label}
-    </span>
-  )
+const RISK_BADGE_VARIANT: Record<string, 'muted' | 'warning' | 'destructive'> = {
+  low: 'muted',
+  medium: 'warning',
+  high: 'destructive',
 }
 
 export function AccessRequestForm() {
@@ -55,77 +52,77 @@ export function AccessRequestForm() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading applications…</p>
+    return <p className="text-sm text-muted-foreground">Loading applications…</p>
   }
 
   const selectedApp = applications.find((a) => a.id === selectedAppId)
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label className="block text-xs font-medium text-slate-600">Application</label>
-          <select
-            required
-            className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-            value={selectedAppId}
-            onChange={(e) => setSelectedAppId(e.target.value)}
-          >
-            <option value="" disabled>
-              Select an application
-            </option>
-            {applications.map((app) => (
-              <option key={app.id} value={app.id}>
-                {app.name} ({app.risk_level})
+    <Card>
+      <CardContent className="pt-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="application">Application</Label>
+            <Select
+              id="application"
+              required
+              value={selectedAppId}
+              onChange={(e) => setSelectedAppId(e.target.value)}
+            >
+              <option value="" disabled>
+                Select an application
               </option>
-            ))}
-          </select>
-        </div>
-
-        {selectedApp && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-            <RiskBadge label={selectedApp.risk_level} />
-            <span>{selectedApp.description}</span>
+              {applications.map((app) => (
+                <option key={app.id} value={app.id}>
+                  {app.name} ({app.risk_level})
+                </option>
+              ))}
+            </Select>
           </div>
-        )}
 
-        <div className="mt-3">
-          <label className="block text-xs font-medium text-slate-600">
-            Justification (required for medium/high risk applications)
-          </label>
-          <textarea
-            className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-            rows={3}
-            value={justification}
-            onChange={(e) => setJustification(e.target.value)}
-            placeholder="Why do you need access to this application?"
-          />
-        </div>
+          {selectedApp && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant={RISK_BADGE_VARIANT[selectedApp.risk_level] ?? 'muted'}>
+                {selectedApp.risk_level}
+              </Badge>
+              <span>{selectedApp.description}</span>
+            </div>
+          )}
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-        {result && (
-          <div className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
-            <p className="font-medium">Request submitted for {result.application_name}.</p>
-            <p className="mt-1 text-xs">
-              Risk: {result.computed_risk_level} · Status: {result.status}
-              {result.auto_approved && ' · Auto-approved'}
-            </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="justification">
+              Justification (required for medium/high risk applications)
+            </Label>
+            <Textarea
+              id="justification"
+              rows={3}
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              placeholder="Why do you need access to this application?"
+            />
           </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          {result && (
+            <div className="rounded-md bg-success/10 p-3 text-sm text-success">
+              <p className="font-medium">Request submitted for {result.application_name}.</p>
+              <p className="mt-1 text-xs">
+                Risk: {result.computed_risk_level} · Status: {result.status}
+                {result.auto_approved && ' · Auto-approved'}
+              </p>
+            </div>
+          )}
+
+          <Button type="submit" disabled={isSubmitting || !selectedAppId}>
+            {isSubmitting ? 'Submitting…' : 'Submit Access Request'}
+          </Button>
+        </form>
+
+        {applications.length === 0 && (
+          <p className="mt-3 text-sm text-muted-foreground">No applications available to request.</p>
         )}
-
-        <button
-          type="submit"
-          disabled={isSubmitting || !selectedAppId}
-          className="mt-4 rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isSubmitting ? 'Submitting…' : 'Submit Access Request'}
-        </button>
-      </form>
-
-      {applications.length === 0 && (
-        <p className="text-sm text-slate-500">No applications available to request.</p>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }

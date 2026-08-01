@@ -47,6 +47,13 @@ from app.services.integrations.mcp_client import MCPToolError
 
 logger = logging.getLogger(__name__)
 
+# The one real, working Slack destination in this demo — see _send_slack's
+# docstring for why every approval ping lands here instead of attempting a
+# per-recipient DM. Also imported by services/workflows/executors.py's
+# notify_slack step so there's exactly one literal to change if the demo
+# workspace's channel is ever renamed again.
+DEFAULT_SLACK_CHANNEL = "#onboarding"
+
 
 def notify(
     db: Session,
@@ -140,16 +147,24 @@ def _send_slack(
     a side channel that bypasses that audit trail (see
     docs/architecture/service-boundaries.md's "notifications" section:
     "Does not call Slack directly")."""
-    # Same real-mode limitation already noted in executors.py's
-    # notify_employee: Slack DM addressing needs a user ID, not an email;
-    # real mode would need a users.lookupByEmail call first. Mock mode
-    # doesn't care. Known V1 gap, not a bug.
-    channel_name = f"@{recipient.email}"
+    # Posts to the same shared #onboarding channel executors.py's
+    # notify_slack step already uses (see DEFAULT_SLACK_CHANNEL), not a
+    # per-recipient DM. A real per-user DM would need a Slack user ID (not
+    # an email) *and* that person actually being a member of the
+    # workspace — neither is true for Meridian Flow's fictional demo
+    # employees (Daniel Osei, Priya Anand, etc. have no real Slack
+    # accounts; only the actual human running this demo does). Provisioning
+    # a real Slack identity per fictional employee isn't worth building for
+    # a portfolio demo, so every approval ping instead lands in one real,
+    # working channel with the intended recipient named in the message
+    # text — still demonstrates a genuine external Slack call per approval
+    # event, just addressed to a destination that actually exists.
+    message = f"{recipient.full_name}, you have a pending approval: {title} — {body}"
     try:
         mcp_client.call_tool(
             db,
             tool_name="send_slack_notification",
-            arguments={"channel": channel_name, "message": f"{title}\n{body}"},
+            arguments={"channel": DEFAULT_SLACK_CHANNEL, "message": message},
             caller=MCPToolCaller.WORKFLOW_ENGINE,
             workflow_instance_id=workflow_instance_id,
             step_instance_id=step_instance_id,
