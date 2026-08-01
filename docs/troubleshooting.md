@@ -152,3 +152,110 @@ accounts needed).
 **Fix (only if you want real integration calls):** set
 `MCP_MOCK_MODE=false` and configure the real Jira/Slack/Calendar
 credentials in `.env`, then restart both `backend` and `mcp_server`.
+
+## Real-mode integration issues (hit running against live Jira/Slack/Calendar)
+
+The entries below came from an actual end-to-end real-mode pass — every
+one of these was a genuine failure with a real cause, not a hypothetical.
+Mock mode can't catch any of them, which is exactly why this pass mattered.
+
+### `create_jira_task` fails with a bare `Client error '400 Bad Request'`, no further detail
+
+**Cause:** the original real-mode implementation called
+`response.raise_for_status()` without ever reading the response body —
+`httpx.HTTPStatusError`'s default message is just the status code and URL.
+Jira's actual reason for rejecting the request (bad project key, invalid
+issue type, missing required field) lives in that body, and it was being
+thrown away.
+
+**Fix:** `mcp_server/app/tools/jira.py` now catches `httpx.HTTPStatusError`
+explicitly and re-raises with `exc.response.text` included. If you're
+still seeing a bare 400 with no detail, you're running an image built
+before this fix — rebuild:
+
+```powershell
+docker compose up -d --build mcp_server
+```
+
+### `create_jira_task` fails with `"The target project doesn't exist or you don't have permission to create issues in it"`, even though the project genuinely exists
+
+**Cause:** Jira Cloud returns this exact message for two different
+problems and deliberately doesn't tell you which — a missing/wrong project
+key, *or* a bad `JIRA_EMAIL`/`JIRA_API_TOKEN` pair (basic auth silently
+authenticating as an invalid or mismatched identity). Don't assume the
+project is the problem before checking the credentials.
+
+**Fix, in order:**
+
+1. Confirm the project actually exists and has the expected key — log
+   into your Jira site directly and check **Projects → View all projects**.
+2. Confirm `JIRA_EMAIL` in `.env` is typed correctly (a missing `@` is an
+   easy typo that produces exactly this symptom) and matches the account
+   you're logged into Jira as.
+3. Confirm that account is a member of the project with permission to
+   create issues (check **Project settings → Access**).
+4. Regenerate `JIRA_API_TOKEN` at
+   `https://id.atlassian.com/manage-profile/security/api-tokens` while
+   logged in as the same account as `JIRA_EMAIL` — an expired, revoked, or
+   mismatched-account token produces this same error.
+
+### Changed `.env`, but `mcp_server`/`backend` still behaves like the old value
+
+**Cause:** `docker compose restart <service>` relaunches the existing
+container with whatever environment it was **created** with — it does not
+re-read `.env`. Only recreating the container picks up a new value.
+
+**Fix:**
+
+```powershell
+docker compose up -d --build mcp_server   # or backend, worker, etc.
+```
+
+Verify what a running container actually has loaded, without printing any
+secret values, by naming the one variable you care about:
+
+```powershell
+docker compose exec mcp_server printenv JIRA_EMAIL
+```
+
+### `schedule_calendar_event` fails with `"Service accounts cannot invite attendees without Domain-Wide Delegation of Authority"`
+
+**Cause:** this is not transient — retrying never fixes it. A bare Google
+service account (what you get for free, with no Google Workspace admin
+console) is not permitted to invite attendees to a calendar event at all.
+That capability requires domain-wide delegation, which only exists for
+paid Google Workspace organizations with an admin who configures it —
+ruled out by this project's free-tier constraint (see
+`docs/decisions/`'s free/low-cost principle).
+
+**Fix:** don't ask Calendar to invite attendees. `mcp_server/app/tools/calendar.py`'s
+real-mode implementation no longer sends an `attendees` field at all — the
+event is still created for real, with the intended attendee's email
+folded into the event description instead, since there's no invite
+mechanism available to deliver it any other way.
+
+### A workflow step sits at `pending` indefinitely, no `Retry` button visible, even after fixing the underlying real-mode issue
+
+**Cause:** the `Retry` button only appears once a step reaches a genuinely
+terminal `failed` state (all `max_attempts` exhausted). Before that, a
+`retry`-behavior step that fails sits at `pending` with a future
+`scheduled_at`, waiting for the **worker** container's poll loop to pick
+it back up automatically (backoff schedule: 2s, 8s, 30s between attempts)
+— this is by design, not stuck, but it depends on `worker` actually
+running.
+
+**Fix:** confirm `worker` is in the running service list —
+
+```powershell
+docker compose ps
+```
+
+If it's missing, start it:
+
+```powershell
+docker compose up -d worker
+```
+
+If `worker` is running and the step is still not advancing after well
+past its backoff window, then something else is wrong — check
+`docker compose logs worker --tail 50`.
