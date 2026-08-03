@@ -40,3 +40,6 @@ Thumbs.db
 *.key
 credentials.json
 service-account*.json
+
+# Personal / not for public repo (resume prep material, private notes, etc.)
+personal/
