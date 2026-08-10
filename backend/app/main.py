@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Request
+from collections.abc import Awaitable, Callable
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -17,6 +19,12 @@ from app.api.routes import (
     workflow_instances,
 )
 from app.core.config import get_settings
+from app.core.correlation import (
+    CORRELATION_ID_HEADER,
+    ensure_correlation_id,
+    get_correlation_id,
+    set_correlation_id,
+)
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging
 
@@ -36,13 +44,47 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def correlation_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Bind a correlation ID to this request, then echo it back.
+
+    Registered before anything else runs so that every log line produced
+    while handling the request — including the AppError handler below —
+    already carries the ID. Echoing it on the response matters as much as
+    consuming it: n8n and the support console record what they were told,
+    which is what lets a human paste one string into the console's search
+    box and find the whole transaction (Module 8).
+
+    Deliberately not inside a try/finally that resets the value: each
+    request runs in its own asyncio task with its own ContextVar copy, so
+    there is nothing to leak into the next request.
+    """
+    correlation_id = ensure_correlation_id(request.headers.get(CORRELATION_ID_HEADER))
+    set_correlation_id(correlation_id)
+    response = await call_next(request)
+    response.headers[CORRELATION_ID_HEADER] = correlation_id
+    return response
+
+
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     """Single translation point from domain errors to HTTP responses — see
     app.core.exceptions for why services raise AppError, not HTTPException."""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"type": type(exc).__name__, "message": exc.message}},
+        content={
+            "error": {
+                "type": type(exc).__name__,
+                "message": exc.message,
+                # So a user who hits an error can quote one string to
+                # support, and support can find every log line, provider
+                # call, and workflow step behind it. Additive — existing
+                # clients reading .error.type/.message are unaffected.
+                "correlation_id": get_correlation_id(),
+            }
+        },
     )
 
 

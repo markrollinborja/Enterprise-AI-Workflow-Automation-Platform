@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     app_name: str = "Meridian Flow"
     environment: str = "local"
     log_level: str = "INFO"
+    # "json" or "text" (see app/core/logging.py). Defaults to text because
+    # the common case for this value is a developer watching `docker compose
+    # logs` on their own machine, and JSON is unreadable there. Every
+    # deployed/observability path sets json explicitly — docker-compose.yml
+    # for the backend and worker services, and the CI job that asserts the
+    # JSON shape. Structured logging is the platform default in every context
+    # where something machine-reads the output; text is the local-human
+    # affordance, not a downgrade.
+    log_format: str = "text"
 
     # Database
     # Host port 5433 (not 5432) — matches docker-compose.yml's db service
