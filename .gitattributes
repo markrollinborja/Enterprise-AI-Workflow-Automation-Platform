@@ -1,0 +1,39 @@
+# Normalize line endings.
+#
+# Without this, files authored on Linux (LF) and committed from Windows with
+# core.autocrlf=true produce whole-file phantom diffs: `git diff` reported
+# 1080 changed lines across seven files during Phase 1 when the only real
+# change was two lines in main.py. A review that has to find two real lines
+# inside a thousand fake ones is a review that stops happening.
+#
+# LF in the repository for everything text; Git still checks out CRLF on
+# Windows where a tool needs it. This is the standard fix, and it matters
+# more here than in a single-machine project because this repo is edited
+# from both Linux and Windows.
+* text=auto eol=lf
+
+# Windows-native scripts must keep CRLF on disk — PowerShell and batch files
+# can misbehave with LF endings depending on host and encoding. V2 Module 6
+# adds scripts/powershell/, so this is set before those land rather than
+# after something breaks.
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts and Dockerfiles must keep LF — a CRLF shebang line makes a
+# container fail at startup with an unhelpful "no such file or directory".
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Binary — never diff, never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

@@ -32,6 +32,13 @@ build/
 .DS_Store
 Thumbs.db
 
+# Claude Code: settings.json is shared project config and IS committed —
+# it defines the permission allowlist and the destructive-command denylist
+# every contributor should get. settings.local.json is the per-user file
+# where Claude Code records personal "don't ask again" approvals, so it is
+# machine-specific and must not be.
+.claude/settings.local.json
+
 # Logs
 *.log
 
