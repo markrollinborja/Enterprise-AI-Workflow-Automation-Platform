@@ -220,3 +220,100 @@ class NotificationStatus(str, enum.Enum):
 
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+# ---------------------------------------------------------------------------
+# V2 — integration connection management (Module 1)
+# ---------------------------------------------------------------------------
+
+
+class ProviderType(str, enum.Enum):
+    """Every external system this platform talks to.
+
+    Jira, Slack and Google Calendar are already integrated in V1 *through
+    MCP*, and they appear here anyway — not to re-route them, but because
+    "which of my integrations is unhealthy right now?" is a question the
+    support console has to answer for all of them uniformly (Module 8). A
+    connection row is an operational record; it does not dictate the
+    transport used to reach the provider. See ADR-0016.
+
+    SCIM_CLIENT is the one inbound entry: every other member is a system
+    *we* call, while a SCIM client is an external identity provider calling
+    *us* (Module 5). It earns a connection row for the same reason — its
+    credentials expire, its requests fail, and someone has to see that.
+    """
+
+    SALESFORCE = "salesforce"
+    N8N = "n8n"
+    KEYCLOAK = "keycloak"
+    MICROSOFT_GRAPH = "microsoft_graph"
+    JIRA = "jira"
+    SLACK = "slack"
+    GOOGLE_CALENDAR = "google_calendar"
+    SCIM_CLIENT = "scim_client"
+
+
+class ProviderMode(str, enum.Enum):
+    """Whether a connection reaches the real provider or its simulator.
+
+    Persisted per connection rather than read from settings at display time
+    for the same reason `MCPToolExecution.mock_mode` is: mode can change
+    between when a health check ran and when someone reads the result, and
+    a support console that silently relabels historical evidence is worse
+    than useless. It is also the single field that keeps the project honest
+    about what was actually verified live (see the README's live-versus-
+    simulated disclosure).
+    """
+
+    LIVE = "live"
+    SIMULATED = "simulated"
+
+
+class ProviderAuthMethod(str, enum.Enum):
+    """How this connection authenticates.
+
+    NONE exists for simulators and for n8n's inbound webhook path, where
+    the authentication is HMAC on the request rather than a credential this
+    connection holds. Making that explicit beats a nullable column that
+    every reader has to interpret.
+    """
+
+    OAUTH2_CLIENT_CREDENTIALS = "oauth2_client_credentials"
+    OAUTH2_AUTHORIZATION_CODE = "oauth2_authorization_code"
+    OAUTH2_JWT_BEARER = "oauth2_jwt_bearer"
+    API_TOKEN = "api_token"
+    BASIC = "basic"
+    SERVICE_ACCOUNT = "service_account"
+    NONE = "none"
+
+
+class ConnectionStatus(str, enum.Enum):
+    """Administrative state — what the operator intends.
+
+    Deliberately separate from HealthStatus, which is observed rather than
+    intended. A connection can be ENABLED and UNHEALTHY (the interesting
+    case that should page someone), or DISABLED and irrelevant. Collapsing
+    the two into one column loses the ability to distinguish "broken" from
+    "deliberately turned off", which is precisely the distinction an
+    on-call person needs at 2am.
+    """
+
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+
+
+class HealthStatus(str, enum.Enum):
+    """Observed state, from the most recent health check.
+
+    UNKNOWN is the honest initial value: a connection that has never been
+    checked is not healthy, and claiming otherwise would put a green dot on
+    a dashboard that has verified nothing. DEGRADED covers the real middle
+    ground — reachable but rate-limited, or authenticating but with a token
+    expiring imminently — which would otherwise be forced into a green/red
+    binary that hides the warning.
+    """
+
+    UNKNOWN = "unknown"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"

@@ -14,6 +14,7 @@ from app.models.application import Application
 from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
+from app.models.integration import HealthCheckResult, IntegrationConnection
 from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.notification import Notification
 from app.models.user import User
@@ -199,6 +200,14 @@ def db_session():
             session.execute(delete(Department))
             session.execute(delete(WorkflowDefinition))
             session.execute(delete(Application))
+            # V2 Module 1. Results before connections — HealthCheckResult
+            # has a real FK to integration_connections.id, and this file's
+            # own history is the argument for getting that order right the
+            # first time: one wrong delete order previously aborted the
+            # cleanup transaction and left every table's rows behind for
+            # the remainder of the run.
+            session.execute(delete(HealthCheckResult))
+            session.execute(delete(IntegrationConnection))
             session.commit()
         except Exception:
             session.rollback()
