@@ -71,7 +71,7 @@ def _describe_exception(exc: BaseException) -> str:
     MCPToolExecution.error_message (and whatever a human reads off the
     Workflow Detail page) says what actually happened."""
     current = exc
-    while isinstance(current, (ExceptionGroup, BaseExceptionGroup)) and current.exceptions:
+    while isinstance(current, ExceptionGroup | BaseExceptionGroup) and current.exceptions:
         current = current.exceptions[0]
     return f"{type(current).__name__}: {current}"
 
