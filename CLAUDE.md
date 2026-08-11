@@ -68,6 +68,14 @@ Backend tests need PostgreSQL reachable via `DATABASE_URL` and a
 provider — keep it that way. A test suite that requires containers is a test
 suite that stops getting run.
 
+`DATABASE_URL` for tests must point at a database that has migrations
+applied and has **never** run `python -m app.db.seed` — not the
+`docker compose up` database on port 5433, which gets reseeded on every
+backend container start. `conftest.py` refuses to run otherwise (see
+`_refuse_to_run_against_a_seeded_database`) rather than producing results
+that depend on which Postgres happened to be on the other end of the URL.
+Use a second, dedicated database (`meridian_flow_test`) for the suite.
+
 ---
 
 ## Conventions — follow these, they are not suggestions

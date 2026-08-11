@@ -48,6 +48,53 @@ class Settings(BaseSettings):
     # Workflow definitions — see app/services/workflows/definition_loader.py
     workflows_dir: str = _DEFAULT_WORKFLOWS_DIR
 
+    # Auth mode (V2 Module 4, ADR-0015). "local" keeps V1's self-issued JWT,
+    # which is what the test suite uses — it needs only PostgreSQL, and a
+    # suite that requires an identity provider container is a suite that
+    # stops being run. "oidc" runs the real authorization-code flow against
+    # Keycloak. Both resolve to the same get_current_user and the same
+    # authorization layer.
+    #
+    # Guarded by validate_auth_mode() below: booting a non-local environment
+    # in "local" mode is refused, so the convenient mode cannot be reached
+    # by accident somewhere it matters.
+    auth_mode: str = "local"
+
+    # Keycloak OIDC. All blank-by-default: an install that never enables
+    # oidc mode should not have to invent values, and enabling it without
+    # them fails loudly at startup rather than at first login.
+    oidc_issuer: str = ""
+    oidc_client_id: str = "meridian-flow"
+    # The confidential client's secret, used only for the code-for-token
+    # exchange. Never sent to the browser.
+    oidc_client_secret: str = ""
+    # Where Keycloak sends the browser back. Must exactly match a redirect
+    # URI registered on the Keycloak client, including scheme and port —
+    # a mismatch is one of the Failure Lab's scenarios precisely because
+    # the error Keycloak returns does not say which part disagreed.
+    oidc_redirect_uri: str = "http://localhost:5173/auth/callback"
+    # Audience the access token must carry. Keycloak puts the client ID in
+    # `aud` only when a dedicated audience mapper is configured on the
+    # client — the realm export in infra/keycloak/ sets one up, which is
+    # why this can be validated rather than skipped.
+    oidc_audience: str = "meridian-flow"
+    # How long a fetched JWKS is trusted before refetching. Keycloak
+    # rotates signing keys, and a cache that never expires turns a routine
+    # rotation into a total auth outage. Short enough to recover on its
+    # own, long enough not to hit the JWKS endpoint on every request.
+    oidc_jwks_cache_seconds: int = 300
+    # Clock skew tolerated when checking exp/iat. Containers drift.
+    oidc_leeway_seconds: int = 30
+
+    # SCIM (V2 Module 5). Static bearer token presented by the provisioning
+    # client. Its own credential, not reused from anywhere else: a SCIM
+    # client can create and deactivate accounts, so it should be revocable
+    # on its own without disturbing any other integration.
+    #
+    # Blank rejects every SCIM request — never "authentication disabled".
+    # Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
+    scim_bearer_token: str = ""
+
     # Auth — see docs/architecture/authentication.md
     jwt_secret_key: str = "change-me-in-env"
     jwt_algorithm: str = "HS256"

@@ -1,0 +1,168 @@
+{
+  "realm": "meridian",
+  "displayName": "Meridian Flow",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "realm": [
+      {
+        "name": "meridian-employee",
+        "description": "Submit requests and view own status"
+      },
+      {
+        "name": "meridian-manager",
+        "description": "Approve or reject requests from direct reports"
+      },
+      {
+        "name": "meridian-hr",
+        "description": "Create onboarding, view employee status"
+      },
+      {
+        "name": "meridian-it",
+        "description": "Fulfil technical actions, manage integrations"
+      },
+      {
+        "name": "meridian-security",
+        "description": "Review high-risk access, read integration state"
+      },
+      {
+        "name": "meridian-administrator",
+        "description": "Full platform administration"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "meridian-flow",
+      "name": "Meridian Flow",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "meridian-local-dev-client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:8000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "meridian-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "meridian-flow",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "ava.thompson@cordant.io",
+      "email": "ava.thompson@cordant.io",
+      "firstName": "Ava",
+      "lastName": "Thompson",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-hr"]
+    },
+    {
+      "username": "marcus.reed@cordant.io",
+      "email": "marcus.reed@cordant.io",
+      "firstName": "Marcus",
+      "lastName": "Reed",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-manager"]
+    },
+    {
+      "username": "priya.nair@cordant.io",
+      "email": "priya.nair@cordant.io",
+      "firstName": "Priya",
+      "lastName": "Nair",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-it"]
+    },
+    {
+      "username": "daniel.okafor@cordant.io",
+      "email": "daniel.okafor@cordant.io",
+      "firstName": "Daniel",
+      "lastName": "Okafor",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-security"]
+    },
+    {
+      "username": "sofia.alvarez@cordant.io",
+      "email": "sofia.alvarez@cordant.io",
+      "firstName": "Sofia",
+      "lastName": "Alvarez",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-employee"]
+    },
+    {
+      "username": "admin@cordant.io",
+      "email": "admin@cordant.io",
+      "firstName": "Platform",
+      "lastName": "Administrator",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "MeridianDemo123!", "temporary": false }
+      ],
+      "realmRoles": ["meridian-administrator"]
+    }
+  ]
+}

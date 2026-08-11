@@ -194,6 +194,40 @@ services:
       backend:
         condition: service_started
 
+  keycloak:
+    # Pinned, and checked against published advisories before bumping —
+    # the n8n pin in this file was originally chosen without that check and
+    # landed inside a vulnerable range (see its comment). An identity
+    # provider is the worst place to repeat that mistake.
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ["identity"]
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # Bootstrap admin for the Keycloak console itself. Local development
+      # only — `start-dev` is explicitly not a production mode, it disables
+      # HTTPS enforcement and uses an in-memory H2 database.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTP_ENABLED: "true"
+      # The issuer in every token must match what the backend validates
+      # against, exactly — including scheme, host and port. Keycloak derives
+      # it from the request host unless told otherwise, which means a token
+      # obtained through localhost:8080 and one obtained through
+      # keycloak:8080 carry *different* issuers and only one of them passes
+      # validation. Setting it explicitly removes that class of bug.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      # Realm config is version-controlled and imported at startup, so the
+      # identity setup is reproducible rather than a sequence of console
+      # clicks nobody wrote down. Read-only: an edit made in the admin
+      # console is deliberately not written back here — the file stays the
+      # source of truth, and console changes are understood to be temporary.
+      - ./infra/keycloak/realm-meridian.json:/opt/keycloak/data/import/realm-meridian.json:ro
+    ports:
+      - "8080:8080"
+
 volumes:
   pgdata:
   n8n_data:

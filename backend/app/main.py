@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
@@ -16,10 +17,12 @@ from app.api.routes import (
     inbound_events,
     integrations,
     notifications,
+    scim,
     users,
     webhooks,
     workflow_instances,
 )
+from app.core.auth_mode import validate_auth_configuration
 from app.core.config import get_settings
 from app.core.correlation import (
     CORRELATION_ID_HEADER,
@@ -32,6 +35,17 @@ from app.core.logging import configure_logging
 
 configure_logging()
 settings = get_settings()
+
+# Refuse to start rather than run with an unsafe auth configuration
+# (ADR-0015). Deliberately at import, before the app object exists: the
+# failure this prevents — a deployment silently inheriting local JWT auth
+# because AUTH_MODE was never set — has no visible symptom at runtime, since
+# every login still works. A container that will not boot is the only signal
+# that cannot be missed.
+_auth_mode = validate_auth_configuration(settings)
+logging.getLogger(__name__).info(
+    "Authentication configured", extra={"auth_mode": _auth_mode.value}
+)
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 
@@ -104,6 +118,7 @@ app.include_router(dashboard.router)
 app.include_router(workflow_instances.router)
 app.include_router(integrations.router)
 app.include_router(inbound_events.router)
+app.include_router(scim.router)
 
 
 @app.get("/")

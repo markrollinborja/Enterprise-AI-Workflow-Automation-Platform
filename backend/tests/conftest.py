@@ -148,6 +148,59 @@ def _mock_openai_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.services.ai.service._client", lambda: fake_client)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _refuse_to_run_against_a_seeded_database() -> None:
+    """Root-caused during the Phase 3 handover: the suite was flaky
+    depending on who ran it. Not a test-ordering bug — the two runs were
+    against two different databases. This project's own documented local
+    setup (README "Running the backend without Docker") has you point
+    DATABASE_URL at the same Postgres `docker compose up` exposes on
+    5433, *after* running `python -m app.db.seed` against it (app/db/seed.py
+    runs on every backend container start). Following those instructions
+    to the letter, then running `pytest` from the same shell, points the
+    suite at a database that already has Marcus Webb, Human Resources, and
+    five other departments in it. A freshly migrated empty database — what
+    this project's own sandbox always used — never has that problem. Same
+    code, same tests, two different answers, and the difference is
+    invisible from the pytest output.
+
+    This is the AUTH_MODE startup-guard pattern (app/core/auth_mode.py)
+    applied to the test suite: the failure mode has no useful runtime
+    symptom until some test's row count or name assertion happens to
+    collide with seed data, so refusing loudly and immediately, before a
+    single test runs, is the only signal that cannot be missed or
+    misdiagnosed as flakiness.
+
+    Checks for the seed's "Human Resources" department specifically —
+    cheap, and it exists if and only if app/db/seed.py has ever run
+    against this database.
+    """
+    session = SessionLocal()
+    try:
+        seeded = (
+            session.query(Department).filter(Department.name == "Human Resources").first()
+        )
+    finally:
+        session.close()
+    if seeded is not None:
+        pytest.exit(
+            "DATABASE_URL points at a database that already contains seed "
+            "data (found the demo 'Human Resources' department, created by "
+            "app/db/seed.py). This is almost certainly the same Postgres "
+            "`docker compose up` seeds on every backend container start — "
+            "running the suite against it produces results that depend on "
+            "what else has touched that database, not on the code under "
+            "test.\n\n"
+            "Point DATABASE_URL at a dedicated database that has migrations "
+            "applied and has never run app/db/seed.py, for example:\n"
+            "  createdb meridian_flow_test\n"
+            '  $env:DATABASE_URL = "postgresql+psycopg://meridian:meridian@localhost:5433/meridian_flow_test"\n'
+            "  alembic upgrade head\n"
+            "  pytest",
+            returncode=1,
+        )
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)

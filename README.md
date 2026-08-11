@@ -113,9 +113,21 @@ npm run dev
 
 ## Testing and linting
 
+The backend test suite refuses to run against a database that already has
+seed data in it (see the `_refuse_to_run_against_a_seeded_database` fixture
+in `backend/tests/conftest.py`) — including the `docker compose up` database
+on port 5433, which `python -m app.db.seed` populates on every backend
+container start. Point `DATABASE_URL` at a **separate, dedicated** database
+that only ever has migrations applied, never the seed script:
+
 ```powershell
-# backend — requires migrations applied against a reachable Postgres (see above)
+# One-time setup — a second database in the same Postgres instance
 cd backend
+$env:DATABASE_URL = "postgresql+psycopg://meridian:meridian@localhost:5433/meridian_flow_test"
+createdb -h localhost -p 5433 -U meridian meridian_flow_test   # or: psql ... -c "CREATE DATABASE meridian_flow_test"
+alembic upgrade head
+
+# Every time — same DATABASE_URL, no seed step
 pytest
 ruff check .
 mypy app

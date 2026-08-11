@@ -1,14 +1,48 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import UserRole
+from app.models.enums import ExternalEntityType, ProviderType, UserRole
+from app.models.organization import ExternalIdentity
 from app.models.user import User
 
 
 def get_by_email(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(User.email == email))
+
+
+def get_by_email_ci(db: Session, email: str) -> User | None:
+    """Case-insensitive email lookup.
+
+    Needed by SCIM and by OIDC login, where the address arrives from an
+    external system that may normalize case differently than we stored it.
+    `Dana.Whitfield@cordant.io` and `dana.whitfield@cordant.io` are the same
+    mailbox everywhere that matters, and treating them as different accounts
+    is how a directory ends up with duplicates that are painful to merge.
+    """
+    return db.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
+
+
+def get_by_external_id(
+    db: Session, *, system: ProviderType, external_id: str
+) -> User | None:
+    """Resolve a user through its identity in an external system.
+
+    Authoritative for OIDC login and SCIM, because it survives an email
+    change in the upstream directory — which is exactly the event that
+    breaks any email-keyed integration.
+    """
+    identity = db.scalar(
+        select(ExternalIdentity).where(
+            ExternalIdentity.system == system,
+            ExternalIdentity.entity_type == ExternalEntityType.USER,
+            ExternalIdentity.external_id == external_id,
+        )
+    )
+    if identity is None:
+        return None
+    return db.get(User, identity.entity_id)
 
 
 def get_by_id(db: Session, user_id: UUID) -> User | None:
