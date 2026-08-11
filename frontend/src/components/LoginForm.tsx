@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { fetchAuthMode } from '../api/auth'
+import { redirectToKeycloakLogin } from '../api/oidc'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Input } from './ui/input'
@@ -11,6 +13,18 @@ export function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
+  // Defaults to 'local' while the /auth/mode call is in flight, rather
+  // than flashing one form and swapping to the other a moment later. The
+  // common case — a freshly cloned repo, AUTH_MODE unset — is local, so
+  // that's the better default to render first.
+  const [mode, setMode] = useState<'local' | 'oidc'>('local')
+
+  useEffect(() => {
+    fetchAuthMode()
+      .then((response) => setMode(response.mode))
+      .catch(() => setMode('local'))
+  }, [])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -23,6 +37,11 @@ export function LoginForm() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  async function handleKeycloakSignIn() {
+    setIsRedirecting(true)
+    await redirectToKeycloakLogin()
   }
 
   return (
@@ -41,44 +60,63 @@ export function LoginForm() {
         <Card className="border-sidebar-border/50 shadow-xl">
           <CardContent className="pt-6">
             <p className="mb-4 text-sm font-medium text-foreground">Sign in to your account</p>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+
+            {mode === 'oidc' ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  This deployment authenticates through your organization's identity provider.
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleKeycloakSignIn}
+                  disabled={isRedirecting}
+                  className="w-full"
+                >
+                  {isRedirecting ? 'Redirecting…' : 'Continue with Keycloak'}
+                </Button>
               </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
+                {error && <p className="text-sm text-destructive">{error}</p>}
 
-              <Button type="submit" disabled={isSubmitting} className="w-full">
-                {isSubmitting ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
+                <Button type="submit" disabled={isSubmitting} className="w-full">
+                  {isSubmitting ? 'Signing in…' : 'Sign in'}
+                </Button>
+              </form>
+            )}
           </CardContent>
         </Card>
 
-        <p className="mt-4 text-center text-xs text-sidebar-muted-foreground">
-          Demo users: see backend/app/db/seed.py (e.g. ava.thompson@cordant.io, password from
-          your local .env / seed script).
-        </p>
+        {mode === 'local' && (
+          <p className="mt-4 text-center text-xs text-sidebar-muted-foreground">
+            Demo users: see backend/app/db/seed.py (e.g. ava.thompson@cordant.io, password from
+            your local .env / seed script).
+          </p>
+        )}
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoginForm } from './components/LoginForm'
+import { OidcCallback } from './components/OidcCallback'
 import { EmployeeDirectory } from './components/EmployeeDirectory'
 import { ApprovalInbox } from './components/ApprovalInbox'
 import { DashboardOverview } from './components/DashboardOverview'
@@ -266,6 +267,15 @@ function AuthenticatedView() {
 
 function AppShell() {
   const { user, isLoading } = useAuth()
+
+  // The one server-rendered path in an otherwise state-based-routing app
+  // (see the View type comment above) — Keycloak sends a real HTTP
+  // redirect here, so this has to be resolvable by URL, not by in-app
+  // navigation. Checked before the loading/auth gate below: OidcCallback
+  // needs to run regardless of whether a user is currently logged in.
+  if (window.location.pathname === '/auth/callback') {
+    return <OidcCallback />
+  }
 
   if (isLoading) {
     return <div className="min-h-screen bg-background" />

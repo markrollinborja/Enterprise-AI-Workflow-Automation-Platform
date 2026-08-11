@@ -78,7 +78,6 @@ def validate_auth_configuration(settings: Settings) -> AuthMode:
             for name, value in (
                 ("OIDC_ISSUER", settings.oidc_issuer),
                 ("OIDC_CLIENT_ID", settings.oidc_client_id),
-                ("OIDC_CLIENT_SECRET", settings.oidc_client_secret),
             )
             if not value
         ]

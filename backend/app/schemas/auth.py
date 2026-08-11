@@ -13,6 +13,13 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class AuthModeResponse(BaseModel):
+    """What POST /auth/login and the frontend's login screen both need to
+    agree on before either does anything — see GET /auth/mode."""
+
+    mode: str
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

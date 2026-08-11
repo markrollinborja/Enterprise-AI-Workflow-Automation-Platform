@@ -40,6 +40,18 @@ class PermissionDeniedError(AppError):
     status_code = 403
 
 
+class AuthModeMismatchError(AppError):
+    """Raised when a request targets an authentication path this
+    deployment's AUTH_MODE does not support — e.g. POST /auth/login while
+    AUTH_MODE=oidc. Minting a local token in oidc mode would produce
+    something that validates against neither checker (get_current_user
+    only runs one, per ADR-0015), which is a worse failure than refusing
+    at issuance: it looks like login succeeded and then every subsequent
+    request 401s for a reason the token itself can't explain."""
+
+    status_code = 403
+
+
 class NotFoundError(AppError):
     status_code = 404
 

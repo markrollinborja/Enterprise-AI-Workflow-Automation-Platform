@@ -45,10 +45,28 @@ Then set in `.env` and restart the backend:
 ```
 AUTH_MODE=oidc
 OIDC_ISSUER=http://localhost:8080/realms/meridian
-OIDC_CLIENT_SECRET=meridian-local-dev-client-secret
 ```
 
+No client secret to set — `meridian-flow` is a public client (ADR-0019). The
+frontend redirects the browser to Keycloak and performs the code-for-token
+exchange itself, using PKCE rather than a secret it could never actually
+keep confidential once shipped to every browser that loads the page.
+
 Keycloak admin console: <http://localhost:8080> (`admin` / `admin`).
+
+**Changed `infra/keycloak/realm-meridian.json`?** `docker compose restart
+keycloak` is not enough — Keycloak's dev-mode database lives inside the
+container's own writable layer, not a volume, so a plain restart reuses the
+same container and the same already-imported realm; your JSON edit is
+silently ignored. Recreate it instead:
+
+```bash
+docker compose up -d --force-recreate keycloak
+```
+
+Found the hard way: after editing the realm file for ADR-0019, a `restart`
+left the client confidential and every login failed with a 401 from
+Keycloak's token endpoint until the container was actually recreated.
 
 The realm ships six users mirroring the local seed, same addresses, same
 password, same roles — so switching modes shows the same application with a
@@ -198,6 +216,33 @@ that survives an email change upstream.
 
 ---
 
+## The frontend flow
+
+`GET /auth/mode` is public and unauthenticated — the login screen calls it
+before rendering anything, because it has to decide between a password form
+and a "Continue with Keycloak" button before the person has any credentials
+to offer. `POST /auth/login` checks the same setting server-side and refuses
+with 403 if the deployment is in `oidc` mode, rather than minting a local
+token that would validate against neither checker.
+
+`frontend/src/api/oidc.ts` generates the PKCE verifier and challenge,
+redirects to Keycloak, and — on return to `/auth/callback` — exchanges the
+code for a token directly against Keycloak's token endpoint, with no secret
+involved (ADR-0019). `frontend/src/components/OidcCallback.tsx` hands the
+resulting token to `AuthContext.loginWithToken`, the same entry point a
+local-mode login uses after `POST /auth/login` — from that point on,
+neither `AuthContext` nor any component downstream of it can tell which
+mode produced the token.
+
+`/auth/callback` is a real HTTP redirect target, not an in-app navigation —
+this app deliberately has no router (see the comment in `App.tsx`), so
+`frontend/nginx.conf` adds an SPA fallback (`try_files ... /index.html`)
+specifically so that path resolves to the app instead of a bare 404, and
+`AppShell` checks `window.location.pathname` directly to render
+`OidcCallback` before the normal login/authenticated-view branch.
+
+---
+
 ## What is verified
 
 | Component | Status |
@@ -208,29 +253,36 @@ that survives an email change upstream.
 | User resolution, linking, deactivation | **Tested** |
 | RBAC parity between modes | **Tested** across all six roles |
 | Keycloak container boots and imports the realm | **Verified** — realm, all 6 users, all 6 realm roles confirmed in the admin console |
-| Browser authorization-code + PKCE flow end to end | **Verified** — real login as ava.thompson@cordant.io through Keycloak's hosted form, real RS256 token, `GET /auth/me` returns `role: "hr"`, `GET /employees` returns 200 |
+| Authorization-code + PKCE protocol, driven manually through a browser against the running backend | **Verified** — real login as ava.thompson@cordant.io through Keycloak's hosted form, real RS256 token, `GET /auth/me` returns `role: "hr"`, `GET /employees` returns 200 |
+| The same flow through the app's own login screen (`LoginForm` → Keycloak → `OidcCallback`) | **Verified** — clicked "Continue with Keycloak" on the actual login page, signed in as ava.thompson@cordant.io through Keycloak's hosted form, landed on the authenticated dashboard with her name, HR role, and live employee data |
 
-Verified by hand-driving the actual protocol (PKCE challenge, redirect to
-Keycloak, real password login, code exchange, bearer call against the
-running backend) through a browser — not by inspection. That process
-surfaced two real bugs before this row could turn green: the frontend has
-no OIDC UI yet (tracked separately — see "Known simplifications" below),
-and the backend could not reach Keycloak's JWKS endpoint over the compose
-network until `OIDC_JWKS_URI` was added (see "Two addresses for one
-Keycloak" above).
+Driving the actual protocol against the running containers — not just
+inspecting the code — is what caught three real bugs before every row above
+turned green: the backend could not reach Keycloak's JWKS endpoint over the
+compose network until `OIDC_JWKS_URI` was added; the client secret embedded
+in the frontend made the case for the public-client redesign in ADR-0019;
+and after that redesign, `docker compose restart keycloak` turned out not
+to actually apply it, because Keycloak's dev database survives a restart
+(see "Changed realm-meridian.json?" above) — the fix looked correct in the
+repo and still failed until the container was properly recreated.
 
 ---
 
 ## Known simplifications
 
-- The frontend has no OIDC UI yet — no redirect-to-Keycloak, no
-  `/auth/callback` route. Phase 3 scoped the backend (validation, RBAC
-  parity, SCIM); the browser-based flow above was driven by hand, outside
-  the app's UI, to verify the backend and Keycloak side independently of
-  that gap. Building the frontend piece is tracked as its own follow-up.
 - `start-dev` mode, in-memory H2, HTTP only. Not production Keycloak.
-- The client secret is committed in the realm file and `.env.example`. It is
-  a local development realm with fictional users, and the file is only useful
-  if it works out of the box. A real deployment generates its own.
-- No refresh-token rotation or back-channel logout yet.
+- No refresh-token rotation or back-channel (RP-initiated) logout yet —
+  `logout()` in `AuthContext` clears the local token but does not end the
+  Keycloak session, so a browser that still has that session cookie will
+  skip straight through Keycloak's login form on the next "Continue with
+  Keycloak" click rather than prompting again.
+- No silent/background token renewal. An access token that expires
+  mid-session requires signing in again rather than refreshing invisibly.
+- No frontend build-time OIDC configuration beyond sensible localhost
+  defaults (`frontend/src/api/oidc.ts`) — a deployment against a real
+  Keycloak host would set `VITE_OIDC_ISSUER` etc. at build time, the same
+  way `VITE_API_BASE_URL` already works.
+- No `state`-replay protection beyond one-time use via sessionStorage —
+  adequate for this platform's threat model, not a hardened production
+  implementation.
 - SAML remains a proof of concept to be added after OIDC is stable.

@@ -130,7 +130,6 @@ def oidc_settings(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setattr(settings, "oidc_issuer", ISSUER)
     monkeypatch.setattr(settings, "oidc_audience", AUDIENCE)
     monkeypatch.setattr(settings, "oidc_client_id", CLIENT_ID)
-    monkeypatch.setattr(settings, "oidc_client_secret", "test-client-secret")
     return settings
 
 
@@ -223,6 +222,52 @@ class TestAuthModeConfiguration:
         monkeypatch.setattr(settings, "oidc_issuer", "")
         with pytest.raises(AuthModeConfigurationError, match="OIDC_ISSUER"):
             validate_auth_configuration(settings)
+
+    def test_oidc_mode_does_not_require_a_client_secret(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """meridian-flow is a public client (ADR-0019) — the frontend does
+        the code-for-token exchange with PKCE, not a secret, and the
+        backend never sees one. Requiring a value nothing consumes would
+        be worse than not requiring it: it invites inventing a placeholder
+        to satisfy a check that means nothing."""
+        settings = get_settings()
+        monkeypatch.setattr(settings, "auth_mode", "oidc")
+        monkeypatch.setattr(settings, "environment", "production")
+        monkeypatch.setattr(settings, "oidc_issuer", ISSUER)
+        monkeypatch.setattr(settings, "oidc_client_id", CLIENT_ID)
+        assert validate_auth_configuration(settings) is AuthMode.OIDC
+
+
+class TestAuthModeEndpointAndLoginGuard:
+    """GET /auth/mode and the POST /auth/login guard exist for the same
+    reason: a bearer token minted by the wrong path validates against
+    neither checker (get_current_user runs exactly one, per ADR-0015), so
+    both the frontend and the backend need to agree on the mode before a
+    login attempt happens, not discover the mismatch after."""
+
+    def test_auth_mode_defaults_to_local(self, client: TestClient) -> None:
+        response = client.get("/auth/mode")
+        assert response.status_code == 200
+        assert response.json() == {"mode": "local"}
+
+    def test_auth_mode_reflects_oidc(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(get_settings(), "auth_mode", "oidc")
+        response = client.get("/auth/mode")
+        assert response.status_code == 200
+        assert response.json() == {"mode": "oidc"}
+
+    def test_login_is_refused_when_auth_mode_is_oidc(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(get_settings(), "auth_mode", "oidc")
+        response = client.post(
+            "/auth/login", json={"email": "anyone@cordant.io", "password": "whatever"}
+        )
+        assert response.status_code == 403
+        assert response.json()["error"]["type"] == "AuthModeMismatchError"
 
 
 class TestOIDCTokenValidation:

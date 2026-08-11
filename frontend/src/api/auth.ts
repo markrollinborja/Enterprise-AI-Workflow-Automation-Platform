@@ -18,6 +18,24 @@ export interface CurrentUser {
   is_active: boolean
 }
 
+export interface AuthModeResponse {
+  mode: 'local' | 'oidc'
+}
+
+/**
+ * Called by LoginForm before rendering anything — it needs to know
+ * whether to show a password form or a "Continue with Keycloak" redirect
+ * before the person has any credentials to offer. Public and
+ * unauthenticated on the backend for exactly that reason.
+ */
+export async function fetchAuthMode(): Promise<AuthModeResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/mode`)
+  if (!response.ok) {
+    throw new Error('Failed to determine authentication mode')
+  }
+  return response.json() as Promise<AuthModeResponse>
+}
+
 interface ApiErrorBody {
   error?: { type: string; message: string }
 }

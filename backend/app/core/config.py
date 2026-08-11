@@ -86,9 +86,12 @@ class Settings(BaseSettings):
     # already overridden the same way for the same reason.
     oidc_jwks_uri: str = ""
     oidc_client_id: str = "meridian-flow"
-    # The confidential client's secret, used only for the code-for-token
-    # exchange. Never sent to the browser.
-    oidc_client_secret: str = ""
+    # No client secret setting: meridian-flow is a public client (ADR-0019).
+    # The frontend performs the code-for-token exchange directly against
+    # Keycloak using PKCE, not a secret — a secret shipped to every browser
+    # that loads the page would not be confidential. The backend never
+    # participates in that exchange, so it has no secret to hold.
+    #
     # Where Keycloak sends the browser back. Must exactly match a redirect
     # URI registered on the Keycloak client, including scheme and port —
     # a mismatch is one of the Failure Lab's scenarios precisely because
