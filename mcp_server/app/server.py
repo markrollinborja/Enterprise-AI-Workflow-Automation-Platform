@@ -23,6 +23,8 @@ from app.schemas import (
     CreateJiraTaskOutput,
     LookupEmployeeInput,
     LookupEmployeeOutput,
+    ProvisionM365AccountInput,
+    ProvisionM365AccountOutput,
     ScheduleCalendarEventInput,
     ScheduleCalendarEventOutput,
     SendSlackNotificationInput,
@@ -30,6 +32,7 @@ from app.schemas import (
 )
 from app.tools.calendar import execute_schedule_calendar_event
 from app.tools.employee import execute_lookup_employee
+from app.tools.graph import execute_provision_m365_account
 from app.tools.jira import execute_create_jira_task
 from app.tools.slack import execute_send_slack_notification
 
@@ -106,6 +109,25 @@ def lookup_employee(employee_id: str) -> LookupEmployeeOutput:
     that's a normal outcome for the caller to react to, not a tool
     failure."""
     return execute_lookup_employee(LookupEmployeeInput(employee_id=employee_id))
+
+
+@mcp.tool()
+def provision_m365_account(
+    display_name: str, user_principal_name: str, job_title: str, department: str
+) -> ProvisionM365AccountOutput:
+    """Create a Microsoft 365 account for a new hire (or simulate creating
+    one, in mock mode) via Microsoft Graph. Always returns the equivalent
+    PowerShell an IT admin could run by hand — a generated audit artifact
+    this tool never executes itself, not a live account's real credential.
+    See docs/architecture/microsoft-graph.md."""
+    return execute_provision_m365_account(
+        ProvisionM365AccountInput(
+            display_name=display_name,
+            user_principal_name=user_principal_name,
+            job_title=job_title,
+            department=department,
+        )
+    )
 
 
 if __name__ == "__main__":

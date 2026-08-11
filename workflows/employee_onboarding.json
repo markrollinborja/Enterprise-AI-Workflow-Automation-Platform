@@ -1,10 +1,10 @@
 {
   "workflow_key": "employee_onboarding",
   "name": "Employee Onboarding",
-  "description": "Onboards a newly hired employee: manager approval, an AI-recommended access package, an IT review of that recommendation, MCP-driven task creation and orientation scheduling, and a Slack notification.",
+  "description": "Onboards a newly hired employee: manager approval, an AI-recommended access package, an IT review of that recommendation, MCP-driven Microsoft 365 account provisioning, Jira task creation and orientation scheduling, and a Slack notification.",
   "trigger_type": "event",
   "trigger_event": "employee.created",
-  "version": 3,
+  "version": 4,
   "input_schema": {
     "employee_id": "required"
   },
@@ -37,6 +37,14 @@
       "condition": "recommend_access.requires_human_review == true",
       "approval": { "approver_role": "it", "sequence_order": 2 },
       "failure_behavior": "fail_workflow"
+    },
+    {
+      "key": "provision_m365_account",
+      "name": "Provision Microsoft 365 account",
+      "type": "mcp_tool",
+      "mcp_tool": "provision_m365_account",
+      "failure_behavior": "retry",
+      "max_attempts": 3
     },
     {
       "key": "create_it_tasks",

@@ -154,6 +154,20 @@ def _build_mcp_tool_arguments(
     where that per-workflow content decision lives, deliberately outside
     mcp_server/ (mcp_server doesn't know which workflow is calling it, and
     shouldn't have to)."""
+    if step_def.key == "provision_m365_account":
+        employee = _require_employee(db, instance)
+        return {
+            "display_name": f"{employee.first_name} {employee.last_name}",
+            # work_email doubles as the M365 UPN for this demo, matching
+            # how db/seed.py already uses it as both the directory email
+            # and the login identifier for seeded users — a real
+            # deployment might mint a distinct UPN, but this platform has
+            # no second email to draw one from.
+            "user_principal_name": employee.work_email,
+            "job_title": employee.job_title,
+            "department": employee.department.name,
+        }
+
     if step_def.key == "create_it_tasks":
         employee = _require_employee(db, instance)
         recommendation = context.get("recommend_access") or {}

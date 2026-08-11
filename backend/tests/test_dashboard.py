@@ -309,6 +309,7 @@ def test_workflow_instance_detail_includes_every_section(
 
     mcp_tool_names = {e.tool_name for e in detail.mcp_tool_executions}
     assert mcp_tool_names == {
+        "provision_m365_account",
         "create_jira_task",
         "schedule_calendar_event",
         "send_slack_notification",

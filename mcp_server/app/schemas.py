@@ -56,6 +56,29 @@ class ScheduleCalendarEventOutput(BaseModel):
     status: Literal["scheduled", "failed"]
 
 
+class ProvisionM365AccountInput(BaseModel):
+    display_name: str = Field(description="Full name for the Microsoft 365 account.")
+    user_principal_name: EmailStr = Field(
+        description="UPN / sign-in address, e.g. 'jane.doe@cordant.io'."
+    )
+    job_title: str = Field(description="Job title, set on the account for directory lookups.")
+    department: str = Field(description="Department name, set on the account.")
+
+
+class ProvisionM365AccountOutput(BaseModel):
+    m365_user_id: str = Field(description="The account's Entra ID object ID (a GUID).")
+    user_principal_name: str
+    status: Literal["created", "failed"]
+    # See docs/architecture/microsoft-graph.md and ADR-0020: this platform
+    # provisions through the Graph API directly (or simulates doing so) and
+    # *also* always returns the PowerShell an IT admin would run to
+    # reproduce or verify the same action by hand — a generated artifact
+    # for review, never something this tool executes itself. Present in
+    # both mock and live mode, identically, so the audit trail looks the
+    # same regardless of which mode produced it.
+    powershell_script: str
+
+
 class LookupEmployeeInput(BaseModel):
     employee_id: str = Field(description="Employee UUID, as a string.")
 

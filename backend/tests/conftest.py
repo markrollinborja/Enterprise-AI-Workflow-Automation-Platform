@@ -44,6 +44,12 @@ class _DefaultAIResponse(BaseModel):
 
 
 _DEFAULT_MCP_TOOL_RESULTS: dict[str, dict[str, object]] = {
+    "provision_m365_account": {
+        "m365_user_id": "00000000-0000-0000-0000-0000000000aa",
+        "user_principal_name": "mock.employee@cordant.io",
+        "status": "created",
+        "powershell_script": "New-MgUser -DisplayName 'Mock Employee' ...",
+    },
     "create_jira_task": {
         "issue_key": "MOCK-1001",
         "issue_url": "https://mock-jira.example.com/browse/MOCK-1001",

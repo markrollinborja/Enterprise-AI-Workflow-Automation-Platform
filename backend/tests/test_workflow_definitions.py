@@ -31,12 +31,13 @@ def test_load_all_definitions_creates_both_v1_workflows(db_session: Session) -> 
     assert onboarding.trigger_event == "employee.created"
     assert onboarding.is_active is True
     onboarding_steps = onboarding.definition_json["steps"]
-    assert len(onboarding_steps) == 7
+    assert len(onboarding_steps) == 8
     assert {step["key"] for step in onboarding_steps} == {
         "validate_employee",
         "manager_approval",
         "recommend_access",
         "it_review_access",
+        "provision_m365_account",
         "create_it_tasks",
         "schedule_orientation",
         "notify_slack",

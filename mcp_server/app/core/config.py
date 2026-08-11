@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     google_calendar_credentials_json: str = ""
     google_calendar_id: str = "primary"
 
+    # Microsoft Graph (V2 Module 6) — app-only client-credentials auth
+    # against a Microsoft Entra ID app registration. See
+    # docs/architecture/microsoft-graph.md for the free-tenant setup this
+    # expects. Blank by default, same reasoning as every other integration
+    # here: mock mode never depends on these being valid.
+    graph_tenant_id: str = ""
+    graph_client_id: str = ""
+    graph_client_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
