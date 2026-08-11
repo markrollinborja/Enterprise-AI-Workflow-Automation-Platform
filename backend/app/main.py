@@ -13,6 +13,7 @@ from app.api.routes import (
     departments,
     employees,
     health,
+    inbound_events,
     integrations,
     notifications,
     users,
@@ -102,6 +103,7 @@ app.include_router(notifications.router)
 app.include_router(dashboard.router)
 app.include_router(workflow_instances.router)
 app.include_router(integrations.router)
+app.include_router(inbound_events.router)
 
 
 @app.get("/")

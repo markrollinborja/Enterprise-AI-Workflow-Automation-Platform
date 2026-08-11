@@ -127,5 +127,73 @@ services:
     volumes:
       - ./mcp_server/app:/app/app
 
+  # --------------------------------------------------------------------
+  # V2 opt-in services. Everything above is the V1 base stack and starts
+  # with a bare `docker compose up`; everything below requires an explicit
+  # --profile. That split is deliberate: someone who just cloned this repo
+  # should be able to run the core platform without booting an identity
+  # provider, a workflow tool and an observability stack they did not ask
+  # for. See docs/architecture/n8n.md.
+  # --------------------------------------------------------------------
+
+  n8n:
+    # Pinned to a specific version rather than :latest — a workflow export in
+    # this repo is only importable into a version that understands its node
+    # schema, and `latest` silently breaking that on someone else's machine
+    # is exactly the kind of failure a portfolio reviewer cannot debug.
+    #
+    # 1.121.0 is a floor, not a preference. n8n versions 1.65 through 1.120.4
+    # carry a published security advisory: improper input validation in
+    # workflows combining a Form Submission trigger with a Form Ending node
+    # returning a binary file, allowing an unauthenticated remote attacker
+    # read access to the underlying file system. This project's workflows use
+    # no Form nodes and are therefore not exploitable through that path, but
+    # pinning a known-vulnerable version is not something to leave in a repo
+    # someone else will run. The original pin here was 1.76.1, caught by
+    # n8n's own in-app update banner during Phase 2 verification.
+    # Advisory: https://blog.n8n.io/security-advisory-20260108/
+    #
+    # Safe to bump within 1.x. Moving to 2.x is a deliberate migration, not a
+    # patch — node schemas change and the workflow exports would need
+    # re-verification.
+    image: n8nio/n8n:1.121.0
+    profiles: ["integrations"]
+    restart: unless-stopped
+    environment:
+      # No N8N_BASIC_AUTH_* here, deliberately. n8n removed basic auth in
+      # v1.0 and made user management mandatory; those variables are
+      # silently ignored on 1.x, which is worse than absent — they read
+      # like a security control that does not exist. On first visit n8n
+      # prompts to create an instance owner account, stored in the n8n_data
+      # volume. See docs/architecture/n8n.md.
+      #
+      # Meridian's ingestion endpoint, reachable on the compose network.
+      # The workflows read this rather than hardcoding a URL, so the same
+      # export works against a different backend host.
+      MERIDIAN_API_URL: http://backend:8000
+      # n8n signs its calls to /inbound/events with this. Same value the
+      # backend verifies against (N8N_WEBHOOK_SECRET in .env) — if they
+      # diverge, every delivery gets a 401 and the failure is immediate and
+      # obvious rather than subtle.
+      MERIDIAN_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-}
+      GENERIC_TIMEZONE: America/Chicago
+      # Suppresses n8n's permissions warning about the mounted config file
+      # on Windows bind mounts, which is noise rather than a real problem
+      # here.
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "false"
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Workflow exports are version-controlled (see integrations/n8n/) and
+      # mounted read-only so an accidental edit inside the container cannot
+      # rewrite the file the repository considers authoritative. Import is
+      # a documented manual step, not an automatic overwrite.
+      - ./integrations/n8n/workflows:/workflows:ro
+    depends_on:
+      backend:
+        condition: service_started
+
 volumes:
   pgdata:
+  n8n_data:

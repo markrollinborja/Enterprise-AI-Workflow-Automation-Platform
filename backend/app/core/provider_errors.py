@@ -58,17 +58,28 @@ _SECRET_KEY_MARKERS = (
 
 _REDACTED = "[REDACTED]"
 
+# Characters that can appear inside a real credential. Wider than base64url
+# on purpose: a Salesforce session ID looks like `00D5g000004abc!ARsAQK1x…`
+# and a `!` is not optional decoration, it is part of the token. An earlier
+# version of this class omitted it, so `access_token=00Dxx!SECRET…` matched
+# only the five characters before the bang — under the length threshold, so
+# nothing was redacted at all and a live token would have been persisted in
+# plaintext. Caught by test_token_value_never_appears_in_an_error_message.
+# Widen this rather than narrow it: the cost of over-redacting is an
+# unreadable error, the cost of under-redacting is a leaked credential.
+_TOKEN_CHARS = r"[A-Za-z0-9\-._~+/=!*%]"
+
 # Free-text patterns, for the case where a secret is embedded in a message
 # rather than sitting in its own field — which is exactly what a provider's
 # error body does. Ordered most-specific first; each is applied to every
 # string that gets persisted or logged.
 _SECRET_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     # "Authorization: Bearer eyJ..." / "authorization=Bearer abc"
-    re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9\-._~+/=]{8,}"),
+    re.compile(r"(?i)\b(bearer|basic)\s+" + _TOKEN_CHARS + r"{8,}"),
     # key=value or "key": "value" for any sensitive-looking key
     re.compile(
         r"(?i)\b(" + "|".join(_SECRET_KEY_MARKERS) + r")"
-        r"[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9\-._~+/=]{6,})"
+        r"[\"']?\s*[:=]\s*[\"']?" + _TOKEN_CHARS + r"{6,}"
     ),
     # Bare JWTs — three base64url segments separated by dots. Salesforce,
     # Keycloak and Graph all hand these back inside error payloads.

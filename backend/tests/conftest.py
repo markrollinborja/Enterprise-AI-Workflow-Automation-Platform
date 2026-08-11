@@ -14,9 +14,11 @@ from app.models.application import Application
 from app.models.approval import ApprovalDecision, ApprovalRequest
 from app.models.department import Department
 from app.models.employee import Employee
+from app.models.inbound_event import InboundEvent
 from app.models.integration import HealthCheckResult, IntegrationConnection
 from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.notification import Notification
+from app.models.organization import ExternalIdentity, Organization
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -207,6 +209,13 @@ def db_session():
             # cleanup transaction and left every table's rows behind for
             # the remainder of the run.
             session.execute(delete(HealthCheckResult))
+            # Inbound events reference workflow_instances and themselves
+            # (duplicate_of_id), and external identities reference
+            # integration_connections — both must go before the tables they
+            # point at, for the same reason spelled out above.
+            session.execute(delete(InboundEvent))
+            session.execute(delete(ExternalIdentity))
+            session.execute(delete(Organization))
             session.execute(delete(IntegrationConnection))
             session.commit()
         except Exception:

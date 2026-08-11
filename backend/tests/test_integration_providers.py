@@ -168,17 +168,36 @@ class TestRegistry:
     def test_live_mode_without_an_adapter_refuses_to_simulate(
         self, db_session: Session
     ) -> None:
-        """The integrity test for the whole module. No live adapters exist
-        in Phase 1, and asking for one must fail loudly rather than quietly
-        returning simulated data that would be recorded as real."""
-        connection = _connection(db_session, mode=ProviderMode.LIVE)
+        """The integrity test for the whole module. Asking for a live
+        adapter that does not exist must fail loudly rather than quietly
+        returning simulated data that would be recorded as real.
+
+        Uses Keycloak rather than Salesforce: Salesforce gained a live
+        adapter in Phase 2, so it would now fail for the *different* reason
+        of absent credentials and stop testing what this test is named for.
+        Swap this to the next un-implemented provider when Keycloak lands
+        in Phase 3.
+        """
+        connection = _connection(
+            db_session, provider=ProviderType.KEYCLOAK, mode=ProviderMode.LIVE
+        )
         with pytest.raises(ProviderConfigurationError):
             registry.resolve(connection)
 
-    def test_no_live_adapters_are_claimed_in_phase_1(self) -> None:
-        """Feeds the live-versus-simulated disclosure. If this ever fails,
-        the README's claim has to change in the same commit."""
-        assert registry.live_adapter_providers() == ()
+    def test_live_adapters_match_the_documented_disclosure(self) -> None:
+        """Tripwire for the live-versus-simulated claim.
+
+        This asserts the exact set of providers with a live adapter, so it
+        fails the moment a new one is added — forcing the README, the
+        Salesforce/n8n docs and docs/portfolio/project-evidence.md to be
+        updated in the same commit rather than drifting into an overclaim.
+        It already did that job once, when Salesforce landed in Phase 2.
+
+        Note what this does *not* assert: that Salesforce has been verified
+        against a real org. Having a live adapter and having run it live are
+        different claims, and only the second one belongs in a portfolio.
+        """
+        assert registry.live_adapter_providers() == ("salesforce",)
 
 
 class TestHealthCheckEndpoint:

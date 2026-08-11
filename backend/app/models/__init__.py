@@ -11,14 +11,17 @@ from app.models.enums import (
     ConnectionStatus,
     EmployeeStatus,
     EmploymentType,
+    ExternalEntityType,
     FailureBehavior,
     HealthStatus,
+    InboundEventStatus,
     InstanceStatus,
     MCPExecutionStatus,
     MCPToolCaller,
     NotificationChannel,
     NotificationStatus,
     NotificationType,
+    OrganizationStatus,
     ProviderAuthMethod,
     ProviderMode,
     ProviderType,
@@ -28,9 +31,11 @@ from app.models.enums import (
     TriggerType,
     UserRole,
 )
+from app.models.inbound_event import InboundEvent
 from app.models.integration import HealthCheckResult, IntegrationConnection
 from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.notification import Notification
+from app.models.organization import ExternalIdentity, Organization
 from app.models.user import User
 from app.models.workflow import (
     WorkflowDefinition,
@@ -53,9 +58,13 @@ __all__ = [
     "Employee",
     "EmployeeStatus",
     "EmploymentType",
+    "ExternalEntityType",
+    "ExternalIdentity",
     "FailureBehavior",
     "HealthCheckResult",
     "HealthStatus",
+    "InboundEvent",
+    "InboundEventStatus",
     "InstanceStatus",
     "IntegrationConnection",
     "MCPExecutionStatus",
@@ -65,6 +74,8 @@ __all__ = [
     "NotificationChannel",
     "NotificationStatus",
     "NotificationType",
+    "Organization",
+    "OrganizationStatus",
     "ProviderAuthMethod",
     "ProviderMode",
     "ProviderType",

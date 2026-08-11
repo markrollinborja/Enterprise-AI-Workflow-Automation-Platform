@@ -1,0 +1,195 @@
+{
+  "name": "Meridian — Customer Onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "salesforce-opportunity-changed",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-entry",
+      "name": "Salesforce Event In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-360, 300],
+      "webhookId": "meridian-salesforce-opportunity-changed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "id": "is-won",
+              "leftValue": "={{ $json.body.IsWon }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            },
+            {
+              "id": "has-account",
+              "leftValue": "={{ $json.body.AccountId }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate",
+      "name": "Validate — Closed Won with Account",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-140, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Normalize Salesforce's vocabulary into Meridian's, and mint the two\n// identifiers the rest of the transaction depends on.\n//\n// The idempotency key is derived from the opportunity ID plus the record's\n// LastModifiedDate — NOT from a timestamp or a random value. Salesforce\n// delivers at-least-once, so a retry of the same change must produce the\n// same key or duplicate protection cannot work. Including LastModifiedDate\n// means a genuinely new change to the same opportunity is a new event,\n// which is the behaviour you want.\n//\n// The correlation ID is minted here because this is the true edge of the\n// transaction. Everything downstream — Meridian, Jira, Slack — carries it,\n// which is what makes the whole flow searchable from one string.\n\nconst body = $json.body;\n\nconst opportunityId = body.Id;\nconst lastModified = body.LastModifiedDate || 'unknown';\nconst idempotencyKey = `sf-opp-${opportunityId}-${lastModified}`;\n\nconst correlationId = `n8n-${$execution.id}-${opportunityId}`;\n\nreturn {\n  json: {\n    correlation_id: correlationId,\n    idempotency_key: idempotencyKey,\n    account: {\n      id: body.AccountId,\n      name: body.AccountName || body.Account?.Name || 'Unknown Account',\n      website: body.AccountWebsite || body.Account?.Website || null\n    },\n    opportunity: {\n      id: opportunityId,\n      name: body.Name,\n      is_won: body.IsWon === true,\n      is_closed: body.IsClosed === true,\n      amount: body.Amount ?? null\n    }\n  }\n};"
+      },
+      "id": "normalize",
+      "name": "Normalize + Mint IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [80, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// HMAC-SHA256 over the exact bytes we are about to send.\n//\n// Signing the serialized string and then sending that same string matters:\n// signing an object and letting the HTTP node re-serialize it would change\n// key order or whitespace and produce a signature the backend cannot\n// reproduce. That failure is intermittent and extremely unpleasant to\n// diagnose, so the body is frozen here and sent verbatim.\n\nconst crypto = require('crypto');\n\nconst secret = $env.MERIDIAN_WEBHOOK_SECRET;\nif (!secret) {\n  throw new Error('MERIDIAN_WEBHOOK_SECRET is not set — refusing to send an unsigned event');\n}\n\nconst bodyString = JSON.stringify($json);\nconst signature = crypto.createHmac('sha256', secret).update(bodyString).digest('hex');\n\nreturn {\n  json: {\n    body_string: bodyString,\n    signature,\n    idempotency_key: $json.idempotency_key,\n    correlation_id: $json.correlation_id\n  }\n};"
+      },
+      "id": "sign",
+      "name": "Sign Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MERIDIAN_API_URL }}/inbound/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Signature", "value": "={{ $json.signature }}" },
+            { "name": "X-Idempotency-Key", "value": "={{ $json.idempotency_key }}" },
+            { "name": "X-Event-Type", "value": "organization.onboarding_requested" },
+            { "name": "X-Correlation-ID", "value": "={{ $json.correlation_id }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body_string }}",
+        "options": {
+          "response": { "response": { "fullResponse": true, "neverError": true } },
+          "timeout": 20000
+        }
+      },
+      "id": "call-meridian",
+      "name": "Call Meridian",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "id": "accepted",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 299,
+              "operator": { "type": "number", "operation": "lte" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-response",
+      "name": "Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [740, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 200 = first delivery, 208 = duplicate we already had. Both are\n// success; the distinction is worth surfacing in Slack so an operator can\n// see that a retry was recognised rather than acted on twice.\nconst status = $json.statusCode;\nconst outcome = status === 208 ? 'duplicate (already processed)' : 'accepted';\nreturn { json: { outcome, status, correlation_id: $json.body?.correlation_id } };"
+      },
+      "id": "summarize-success",
+      "name": "Summarize Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Deliberately does NOT echo the response body into the alert. A provider\n// error body can carry tokens or customer data, and a Slack channel is a\n// long-lived, widely-readable store. Status code plus correlation ID is\n// enough to find the full, redacted record in Meridian's support console.\nreturn {\n  json: {\n    status: $json.statusCode,\n    correlation_id: $json.correlation_id ?? 'unknown',\n    message: `Meridian rejected an onboarding event (HTTP ${$json.statusCode}). Investigate by correlation ID.`\n  }\n};"
+      },
+      "id": "summarize-failure",
+      "name": "Sanitize Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 320]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, correlation_id: $json.correlation_id }) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Acknowledge Salesforce",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1180, 200]
+    }
+  ],
+  "connections": {
+    "Salesforce Event In": {
+      "main": [[{ "node": "Validate — Closed Won with Account", "type": "main", "index": 0 }]]
+    },
+    "Validate — Closed Won with Account": {
+      "main": [
+        [{ "node": "Normalize + Mint IDs", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge Salesforce", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize + Mint IDs": {
+      "main": [[{ "node": "Sign Request", "type": "main", "index": 0 }]]
+    },
+    "Sign Request": {
+      "main": [[{ "node": "Call Meridian", "type": "main", "index": 0 }]]
+    },
+    "Call Meridian": {
+      "main": [[{ "node": "Accepted?", "type": "main", "index": 0 }]]
+    },
+    "Accepted?": {
+      "main": [
+        [{ "node": "Summarize Outcome", "type": "main", "index": 0 }],
+        [{ "node": "Sanitize Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Summarize Outcome": {
+      "main": [[{ "node": "Acknowledge Salesforce", "type": "main", "index": 0 }]]
+    },
+    "Sanitize Failure": {
+      "main": [[{ "node": "Acknowledge Salesforce", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "tags": [{ "name": "meridian" }],
+  "meta": {
+    "meridianNotes": "Version-controlled export. Import via n8n UI (Workflows > Import from File) using /workflows/customer-onboarding.json inside the container. Requires MERIDIAN_API_URL and MERIDIAN_WEBHOOK_SECRET environment variables, both set by docker-compose. See docs/architecture/n8n.md."
+  }
+}

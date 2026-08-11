@@ -317,3 +317,60 @@ class HealthStatus(str, enum.Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
+
+
+# ---------------------------------------------------------------------------
+# V2 — customer organizations and inbound events (Module 2)
+# ---------------------------------------------------------------------------
+
+
+class OrganizationStatus(str, enum.Enum):
+    """Lifecycle of a customer organization.
+
+    PROSPECTIVE exists because a Salesforce Account can be synced long
+    before anyone decides to onboard it — the record is real, the customer
+    relationship is not yet. Without this value, the first sync would have
+    to lie in one direction or the other (invent an ACTIVE customer, or
+    refuse to store a legitimate account).
+    """
+
+    PROSPECTIVE = "prospective"
+    ONBOARDING = "onboarding"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+
+class ExternalEntityType(str, enum.Enum):
+    """What kind of local record an external identity points at.
+
+    Part of the uniqueness key alongside system and external ID: Salesforce
+    Account `001...` and Contact `003...` can never collide in practice, but
+    relying on a vendor's ID-prefix conventions to guarantee that is a bet
+    on someone else's implementation detail.
+    """
+
+    ORGANIZATION = "organization"
+    USER = "user"
+    EMPLOYEE = "employee"
+
+
+class InboundEventStatus(str, enum.Enum):
+    """Outcome of one inbound event delivery.
+
+    DUPLICATE is a first-class success, not an error. A provider that
+    retries a delivery it never saw acknowledged is behaving correctly, and
+    the second delivery must be recorded, acknowledged with a 2xx, and not
+    acted on twice. Modelling it as a failure would make a well-behaved
+    provider look like a broken one on every dashboard.
+
+    REJECTED is distinct from FAILED: rejected means we refused the payload
+    (bad signature, malformed body) and nothing was attempted; failed means
+    we accepted it and processing broke. Different causes, different
+    remedies, and only one of them is retryable.
+    """
+
+    RECEIVED = "received"
+    PROCESSED = "processed"
+    DUPLICATE = "duplicate"
+    FAILED = "failed"
+    REJECTED = "rejected"

@@ -17,15 +17,29 @@ provider?" has to be answerable from the data, not from a config file's
 current value.
 """
 
+from app.core.config import get_settings
 from app.core.provider_errors import ProviderConfigurationError
-from app.models.enums import ProviderMode
+from app.models.enums import ProviderMode, ProviderType
 from app.models.integration import IntegrationConnection
 from app.services.integrations.providers.base import Provider
+from app.services.integrations.providers.salesforce_live import SalesforceLiveProvider
+from app.services.integrations.providers.salesforce_simulated import (
+    SalesforceSimulatedProvider,
+)
 from app.services.integrations.providers.simulated import SimulatedProvider
 
-# Live adapters register themselves here as they are built, keyed by
-# ProviderType. Empty in Phase 1 — deliberately, and visibly.
-_LIVE_ADAPTERS: dict[str, type[Provider]] = {}
+# Live adapters, keyed by ProviderType value. Salesforce lands in Phase 2;
+# Keycloak, SCIM and Graph follow in Phases 3-4.
+_LIVE_ADAPTERS: dict[str, type[Provider]] = {
+    ProviderType.SALESFORCE.value: SalesforceLiveProvider,
+}
+
+# Provider-specific simulators. A provider without an entry here falls back
+# to the generic SimulatedProvider, which is correct for anything whose
+# failure surface is not yet distinctive enough to be worth its own class.
+_SIMULATORS: dict[str, type[SimulatedProvider]] = {
+    ProviderType.SALESFORCE.value: SalesforceSimulatedProvider,
+}
 
 
 def resolve(connection: IntegrationConnection) -> Provider:
@@ -35,7 +49,8 @@ def resolve(connection: IntegrationConnection) -> Provider:
     adapter that does not exist yet — never silently simulates.
     """
     if connection.mode is ProviderMode.SIMULATED:
-        return SimulatedProvider(
+        simulator_cls = _SIMULATORS.get(connection.provider.value, SimulatedProvider)
+        return simulator_cls(
             provider_type=connection.provider,
             connection_key=connection.connection_key,
             base_url=connection.base_url,
@@ -53,9 +68,48 @@ def resolve(connection: IntegrationConnection) -> Provider:
 
     return adapter_cls(
         connection_key=connection.connection_key,
-        base_url=connection.base_url,
+        # Credentials come from the environment, never from the connection
+        # row — the row holds only `credential_ref`, the *name* of the
+        # variable (ADR-0016). Resolving them here rather than inside each
+        # adapter keeps every adapter free of configuration lookups and
+        # makes this the single place to audit how secrets reach a
+        # provider.
+        base_url=connection.base_url or _default_base_url(connection.provider),
         config=dict(connection.config or {}),
+        **_live_credentials(connection.provider),
     )
+
+
+def _default_base_url(provider: ProviderType) -> str | None:
+    """Fall back to the configured instance URL when the row has none.
+
+    A connection row may legitimately omit base_url when there is only one
+    instance of that provider for the whole platform, which is the common
+    case in this project. Seeded rows set it explicitly; this covers the
+    hand-created ones.
+    """
+    settings = get_settings()
+    if provider is ProviderType.SALESFORCE:
+        return settings.salesforce_instance_url or None
+    return None
+
+
+def _live_credentials(provider: ProviderType) -> dict[str, str | None]:
+    """Provider-specific credential kwargs, read from settings.
+
+    Returns empty for providers whose adapters take no credentials. Each
+    adapter validates its own requirements and raises
+    ProviderConfigurationError with a specific message, so a missing secret
+    surfaces as an unhealthy connection with an actionable reason rather
+    than a TypeError about a missing argument.
+    """
+    settings = get_settings()
+    if provider is ProviderType.SALESFORCE:
+        return {
+            "client_id": settings.salesforce_client_id or None,
+            "client_secret": settings.salesforce_client_secret or None,
+        }
+    return {}
 
 
 def register_live_adapter(provider_value: str, adapter_cls: type[Provider]) -> None:

@@ -73,6 +73,31 @@ class Settings(BaseSettings):
     # a general-purpose default (Phase 13, reliability hardening).
     openai_timeout_seconds: float = 20.0
 
+    # Salesforce (V2 Module 2) — see
+    # app/services/integrations/providers/salesforce_live.py and
+    # docs/architecture/salesforce.md for the org setup this expects.
+    #
+    # Empty defaults, deliberately: a connection configured for live mode
+    # with no credentials must fail as a ProviderConfigurationError with a
+    # clear message, not crash at import or silently fall back to the
+    # simulator. Absent credentials is a normal state for anyone who cloned
+    # this repo without a Salesforce org.
+    salesforce_instance_url: str = ""
+    salesforce_client_id: str = ""
+    salesforce_client_secret: str = ""
+
+    # n8n (V2 Module 3). Shared secret for HMAC-SHA256 over the raw request
+    # body on POST /inbound/events. Empty by default and treated as a
+    # verification *failure*, never as "verification disabled" — a
+    # deployment that forgot to set it must reject traffic loudly rather
+    # than quietly accept unauthenticated requests. See
+    # app/core/webhook_security.py.
+    n8n_webhook_secret: str = ""
+    n8n_base_url: str = "http://n8n:5678"
+    # No API version setting on purpose — the adapter discovers it from
+    # /services/data/. Salesforce ships three releases a year and any
+    # pinned version rots into a 404 on a URL that looks correct.
+
     # MCP — see app/services/integrations/mcp_client.py. The path suffix
     # matters: FastMCP's streamable-http transport mounts the protocol
     # endpoint at /mcp by default (see mcp_server/app/server.py), it isn't
