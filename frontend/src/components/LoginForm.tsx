@@ -119,17 +119,22 @@ export function LoginForm() {
           </p>
         )}
 
-        {/* Always available regardless of AUTH_MODE, deliberately — this is
-            a standalone proof-of-concept route (ADR-0021), not a third
-            sign-in mode competing with the form/button above it. A full
-            page navigation, not a fetch: Keycloak's SAML SSO endpoint
-            expects a browser-level redirect, the same way the Keycloak
-            OIDC button above does. */}
-        <p className="mt-3 text-center text-xs text-sidebar-muted-foreground">
-          <a href={`${API_BASE_URL}/auth/saml/login`} className="underline hover:no-underline">
-            Try the SAML PoC
-          </a>
-        </p>
+        {/* Only shown in local mode — found live, not by inspection: the
+            SAML PoC issues a local-mode token (ADR-0021), which
+            get_current_user only accepts when AUTH_MODE=local
+            (ADR-0015). The backend now refuses GET /auth/saml/login
+            outright in oidc mode with a clear error, but offering a link
+            here that a person in oidc mode would click into a 403 is
+            worse than not offering it. A full page navigation, not a
+            fetch: Keycloak's SAML SSO endpoint expects a browser-level
+            redirect, the same way the Keycloak OIDC button above does. */}
+        {mode === 'local' && (
+          <p className="mt-3 text-center text-xs text-sidebar-muted-foreground">
+            <a href={`${API_BASE_URL}/auth/saml/login`} className="underline hover:no-underline">
+              Try the SAML PoC
+            </a>
+          </p>
+        )}
       </div>
     </div>
   )

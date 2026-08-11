@@ -9,6 +9,20 @@ second identity provider.
 
 ---
 
+## Requires AUTH_MODE=local
+
+This route pair issues a local-format token (below), which
+`get_current_user` only accepts when the deployment is running
+`AUTH_MODE=local` (ADR-0015, ADR-0021). `GET /auth/saml/login` checks this
+first and refuses immediately with a clear error if the deployment is in
+oidc mode; the login screen hides the "Try the SAML PoC" link entirely
+outside local mode for the same reason. This was found by actually driving
+the flow through a browser against an oidc-mode deployment — the login and
+the full Keycloak round trip genuinely succeeded, and it failed one step
+later at `/auth/me` with no obvious cause, before the guard existed.
+
+---
+
 ## The flow
 
 1. Someone clicks "Try the SAML PoC" on the login screen (`LoginForm.tsx`),

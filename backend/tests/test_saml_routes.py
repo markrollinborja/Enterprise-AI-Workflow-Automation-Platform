@@ -175,6 +175,23 @@ class TestSamlLogin:
         assert location.startswith(SSO_URL)
         assert "SAMLRequest" in parse_qs(urlparse(location).query)
 
+    def test_refused_immediately_when_auth_mode_is_not_local(
+        self,
+        client: TestClient,
+        saml_route_validator: SAMLValidator,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Found by driving this through a real browser against a
+        deployment running AUTH_MODE=oidc: the token this flow issues only
+        validates under get_current_user's local-mode path (ADR-0015), so a
+        login that's allowed to start here would complete the entire
+        Keycloak round trip and only fail afterward, at /auth/me, with no
+        clear signal why. Refusing here means one clear error instead."""
+        monkeypatch.setattr(get_settings(), "auth_mode", "oidc")
+        response = client.get("/auth/saml/login", follow_redirects=False)
+        assert response.status_code == 403
+        assert response.json()["error"]["type"] == "AuthModeMismatchError"
+
 
 class TestSamlAcs:
     def test_valid_response_issues_a_working_local_token_and_redirects_to_the_frontend(
