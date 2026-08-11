@@ -99,7 +99,8 @@ independent of any one environment's tooling constraints.
 | AuthnRequest construction, HTTP-Redirect binding encoding | **Tested** (`backend/tests/test_saml.py`) |
 | Signature verification, wrapping-attack resistance, replay protection, audience/recipient/issuer/conditions checks | **Tested** (`backend/tests/test_saml.py`, 22 cases) |
 | `/auth/saml/login` and `/auth/saml/acs` wired together against a real database | **Tested** (`backend/tests/test_saml_routes.py`) |
-| Full SP-initiated login through a real Keycloak, driven by an actual browser | See the phase closeout notes once run — mirrors how OIDC's three real bugs were only found by driving the actual UI (`docs/architecture/identity.md`, "What is verified") |
+| `AUTH_MODE` guard on `GET /auth/saml/login` | **Tested** (`backend/tests/test_saml_routes.py::TestSamlLogin::test_refused_immediately_when_auth_mode_is_not_local`) |
+| Full SP-initiated login through a real Keycloak, driven by an actual browser, `AUTH_MODE=local` | **Verified** — clicked through from the login screen, real signed assertion, landed authenticated as `ava.thompson@cordant.io`. This run is what found the AUTH_MODE gap above: the first attempt (against a deployment running `AUTH_MODE=oidc`) issued a real, correctly-signed token that then failed at `/auth/me` with no obvious cause, exactly the class of bug OIDC's own closeout found by inspection missing (`docs/architecture/identity.md`, "What is verified") |
 
 ---
 
