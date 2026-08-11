@@ -25,3 +25,16 @@ openai==2.48.0
 # because backend code imports it directly (see ADR-0012).
 mcp==1.9.4
 anyio==4.7.0
+# SAML 2.0 PoC (V2 Module 4 remainder, ADR-0021). signxml over
+# python3-saml/pysaml2 deliberately: both of the more common SAML
+# toolkits shell out to xmlsec1, a C library with its own native build
+# (headers, pkg-config, a matching libxmlsec1-openssl at runtime) that
+# has to be apt-installed into the image on top of the Python
+# dependency. signxml verifies and produces XML-DSig signatures in pure
+# Python on top of lxml + cryptography, both of which already ship
+# manylinux wheels this project depends on elsewhere — one fewer native
+# toolchain to keep patched for a PoC endpoint, not a production IdP
+# integration that would justify a full toolkit's feature surface
+# (encrypted assertions, SLO, metadata autoconfiguration).
+signxml==5.1.0
+lxml==6.1.1

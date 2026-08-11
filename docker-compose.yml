@@ -45,6 +45,11 @@ services:
       # reasoning as DATABASE_URL and MCP_SERVER_URL above — see
       # Settings.oidc_jwks_uri.
       OIDC_JWKS_URI: http://keycloak:8080/realms/meridian/protocol/openid-connect/certs
+      # Same two-address problem as OIDC_JWKS_URI just above, same fix: the
+      # backend fetches Keycloak's SAML IdP metadata itself, over the
+      # compose network, where "localhost" resolves to this container, not
+      # the host. See Settings.saml_idp_metadata_url.
+      SAML_IDP_METADATA_URL: http://keycloak:8080/realms/meridian/protocol/saml/descriptor
     command: >
       sh -c "alembic upgrade head &&
              python -m app.db.seed &&

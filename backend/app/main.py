@@ -17,6 +17,7 @@ from app.api.routes import (
     inbound_events,
     integrations,
     notifications,
+    saml,
     scim,
     users,
     webhooks,
@@ -119,6 +120,7 @@ app.include_router(workflow_instances.router)
 app.include_router(integrations.router)
 app.include_router(inbound_events.router)
 app.include_router(scim.router)
+app.include_router(saml.router)
 
 
 @app.get("/")

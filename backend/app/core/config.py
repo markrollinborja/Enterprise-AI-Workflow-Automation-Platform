@@ -110,6 +110,47 @@ class Settings(BaseSettings):
     # Clock skew tolerated when checking exp/iat. Containers drift.
     oidc_leeway_seconds: int = 30
 
+    # SAML PoC (V2 Module 4 remainder, ADR-0021). Deliberately not a third
+    # AUTH_MODE — see the ADR for why. This is a standalone /auth/saml route
+    # pair that exists regardless of AUTH_MODE and, on a successful
+    # SP-initiated login, issues the same local-JWT format AUTH_MODE=local
+    # validates. It proves signed-assertion SP handling end to end without
+    # taking on OIDC's RBAC-parity contract or a second production sign-in
+    # path.
+    #
+    # Blank means "derive from oidc_issuer" (same realm, the
+    # /protocol/saml/descriptor suffix instead of OIDC's
+    # /protocol/openid-connect/certs) — legitimate because this is the same
+    # Keycloak instance serving both protocols, not a coincidence of
+    # convenient defaults. Overridden in docker-compose.yml the same way as
+    # oidc_jwks_uri, for the same reason: this backend process fetches it
+    # itself, over the compose network, where "localhost" resolves to the
+    # container and not the host.
+    saml_idp_metadata_url: str = ""
+    # SP entity ID — the Issuer this app puts on outbound AuthnRequests and
+    # the value Keycloak echoes into the assertion's <Audience>. Must match
+    # the SAML client's Client ID in infra/keycloak/realm-meridian.json
+    # exactly, or every response fails audience validation.
+    saml_sp_entity_id: str = "meridian-flow-saml"
+    # Where Keycloak POSTs the SAMLResponse. Must match the SAML client's
+    # redirect URI exactly, and is re-checked against the assertion's own
+    # SubjectConfirmationData/@Recipient (see core/saml.py) — a response
+    # confirmed for some other URL was not meant for this ACS, even if
+    # everything else about it validates.
+    saml_acs_url: str = "http://localhost:8000/auth/saml/acs"
+    # Where the browser lands, carrying the issued token, once the ACS
+    # finishes. A frontend route, not an API route — see
+    # frontend/src/components/SamlCallback.tsx.
+    saml_frontend_redirect_url: str = "http://localhost:5173/auth/saml/callback"
+    # Clock skew tolerated on Conditions/SubjectConfirmationData timestamps.
+    # Same reasoning as oidc_leeway_seconds.
+    saml_leeway_seconds: int = 30
+    # How long a fetched IdP signing certificate is trusted before
+    # refetching. Same reasoning as oidc_jwks_cache_seconds — long enough
+    # not to hit Keycloak's metadata endpoint on every login, short enough
+    # that a key rotation recovers on its own.
+    saml_metadata_cache_seconds: int = 300
+
     # SCIM (V2 Module 5). Static bearer token presented by the provisioning
     # client. Its own credential, not reused from anywhere else: a SCIM
     # client can create and deactivate accounts, so it should be revocable

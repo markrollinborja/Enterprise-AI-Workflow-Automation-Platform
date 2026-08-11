@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { fetchAuthMode } from '../api/auth'
 import { redirectToKeycloakLogin } from '../api/oidc'
+import { API_BASE_URL } from '../api/client'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Input } from './ui/input'
@@ -117,6 +118,18 @@ export function LoginForm() {
             your local .env / seed script).
           </p>
         )}
+
+        {/* Always available regardless of AUTH_MODE, deliberately — this is
+            a standalone proof-of-concept route (ADR-0021), not a third
+            sign-in mode competing with the form/button above it. A full
+            page navigation, not a fetch: Keycloak's SAML SSO endpoint
+            expects a browser-level redirect, the same way the Keycloak
+            OIDC button above does. */}
+        <p className="mt-3 text-center text-xs text-sidebar-muted-foreground">
+          <a href={`${API_BASE_URL}/auth/saml/login`} className="underline hover:no-underline">
+            Try the SAML PoC
+          </a>
+        </p>
       </div>
     </div>
   )

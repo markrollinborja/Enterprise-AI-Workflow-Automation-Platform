@@ -88,6 +88,25 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "meridian-flow-saml",
+      "name": "Meridian Flow (SAML PoC)",
+      "description": "V2 Module 4 remainder, ADR-0021. A proof-of-concept SP, not the deployment's primary sign-in path -- see docs/architecture/saml-poc.md.",
+      "enabled": true,
+      "protocol": "saml",
+      "redirectUris": [
+        "http://localhost:8000/auth/saml/acs"
+      ],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "false",
+        "saml.client.signature": "false",
+        "saml.authnstatement": "true",
+        "saml_name_id_format": "email",
+        "saml_force_name_id_format": "true",
+        "saml.signature.algorithm": "RSA_SHA256"
+      }
     }
   ],
   "users": [

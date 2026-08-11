@@ -14,6 +14,7 @@ import {
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoginForm } from './components/LoginForm'
 import { OidcCallback } from './components/OidcCallback'
+import { SamlCallback } from './components/SamlCallback'
 import { EmployeeDirectory } from './components/EmployeeDirectory'
 import { ApprovalInbox } from './components/ApprovalInbox'
 import { DashboardOverview } from './components/DashboardOverview'
@@ -275,6 +276,14 @@ function AppShell() {
   // needs to run regardless of whether a user is currently logged in.
   if (window.location.pathname === '/auth/callback') {
     return <OidcCallback />
+  }
+
+  // Same reasoning: the backend's SAML ACS sends a real HTTP redirect here
+  // (see backend/app/api/routes/saml.py) after already validating the
+  // signed assertion server-side, so this also has to be resolvable by
+  // URL regardless of whether a user is currently logged in.
+  if (window.location.pathname === '/auth/saml/callback') {
+    return <SamlCallback />
   }
 
   if (isLoading) {

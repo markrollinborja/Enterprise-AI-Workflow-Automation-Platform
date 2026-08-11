@@ -1,0 +1,40 @@
+# ADR-0021: SAML Is a Proof of Concept, Not a Third Auth Mode
+
+**Status:** Accepted — 2026-08-11
+
+**Context:** The original V2 scope names Module 4 "Identity — Keycloak OIDC, then SAML PoC." OIDC is done (ADR-0015, ADR-0018, ADR-0019): a full `AUTH_MODE=oidc` alongside `local`, with RBAC-parity tests proving both modes reach identical authorization decisions. SAML is the older enterprise SSO standard — still what many large organizations (banks, healthcare, government) run instead of OIDC — and is explicitly still required for V2 to be complete, per a standing instruction not to drop scope items. The word the scope uses is "PoC," not "production mode," and that distinction has to translate into an actual design decision before writing code, not stay a vague intention.
+
+Two questions needed answers before any code: how much of OIDC's depth does SAML need to replicate, and which SAML toolkit to build it with.
+
+**Decision:**
+
+*SAML is a standalone route pair, not a dispatch target.* `GET /auth/saml/login` and `POST /auth/saml/acs` (`app/api/routes/saml.py`) exist regardless of `AUTH_MODE`. A successful login issues the same local-JWT format `AUTH_MODE=local` already validates (`app/services/auth/service.issue_token_for`) — there is no `AuthMode.SAML`, no RBAC-parity suite duplicating `test_auth_modes.py`'s, and `app/api/deps.get_current_user` is completely unaware this route pair exists. This is a deliberate scope line, not an oversight: OIDC earned its full production treatment because it is the actual sign-in path a deployment runs. SAML here proves the protocol — signed-assertion verification, SP-initiated redirect binding, the security controls below — without taking on a second production authentication system for a protocol this platform isn't actually deploying. Building that second system would be exactly the "scaffolding with no second caller" this project's principles warn against (see ADR-0020's identical reasoning for why Graph provisioning didn't get its own provider-adapter).
+
+User resolution (`app/services/auth/saml_resolver.py`) mirrors OIDC's "authenticate, don't provision" line — a NameID with no matching local User is rejected, never silently turned into an account — but skips OIDC's external-identity-linking table entirely. That table exists to keep a stable mapping across a Keycloak subject that might not match the stored email; it's not needed for a route nothing dispatches users to by default.
+
+*signxml over python3-saml or pysaml2.* Both of the more common Python SAML toolkits shell out to `xmlsec1`, a C library with its own native build (headers, `pkg-config`, `libxmlsec1-openssl` at runtime) layered on top of the Python dependency — a second toolchain to keep patched, in the Docker image, for a PoC endpoint that doesn't need a full toolkit's feature surface (encrypted assertions, single logout, metadata autoconfiguration). signxml verifies and produces XML-DSig signatures in pure Python on top of `lxml` and `cryptography`, both already manylinux-wheel dependencies elsewhere in this project. This held up independent of the tooling constraints of any one development environment — it's a real reduction in what has to be installed and maintained, not a workaround.
+
+*Assertion-signed, not response-signed.* The Keycloak SAML client (`infra/keycloak/realm-meridian.json`) sets `saml.assertion.signature=true` and `saml.server.signature=false`. Every security-relevant claim (Subject, Conditions, SubjectConfirmationData, AudienceRestriction) lives inside the Assertion; the outer `<samlp:Response>` wrapper carries nothing this module trusts. This is a common, defensible real-world SAML SP configuration, not a corner cut for convenience — and this whole stack runs over plain HTTP in `start-dev` mode already (a known simplification predating this ADR, see `docs/architecture/identity.md`), so a hardened dual-signature story would be inconsistent with everything else about this local-dev identity setup.
+
+*Security controls implemented, and why each one exists:*
+
+- **Exactly one `<saml:Assertion>`**, checked before any signature verification runs. A response carrying two — one real, one attacker-supplied — is the entry point for XML Signature Wrapping, where code that reads "the" NameID by tag name rather than from the specifically-verified element can be made to read the wrong one even though the real assertion's signature checks out. Rejecting ambiguity outright closes this before it can be exploited. Tested directly (`test_saml.py::test_multiple_assertions_is_rejected`, `test_zero_assertions_is_rejected`, `test_assertion_nested_under_an_extra_wrapper_is_rejected`).
+- **Extraction only from `signxml`'s returned `.signed_xml`**, never the original parsed response tree. This is the second half of the wrapping defense — even with exactly one assertion present, reading claims from the pre-verification tree reopens the same class of bug the moment someone "simplifies" the code by treating the re-lookup as redundant. Tested directly with a decoy NameID planted as a sibling of the real, signed Assertion (`test_claims_are_read_from_the_verified_assertion_not_a_decoy_sibling`).
+- **Audience, Recipient, and one-time `InResponseTo`.** Together these bind an assertion to this SP, this ACS URL, and the specific login this SP started. `InResponseTo` is checked against an in-memory store of AuthnRequest ids this process actually issued (`_PendingRequestStore`), consumed on first use — a captured `SAMLResponse` POSTed to the ACS twice fails the second time even though every other check on it still passes.
+- **Conditions and confirmation timestamps**, with the same bounded leeway pattern as `oidc.py`'s clock-skew handling.
+
+**Alternatives considered:**
+
+*A third `AuthMode.SAML`, matching OIDC's full depth* — rejected for the reasons above: disproportionate for a protocol this deployment doesn't actually run, and it would mean maintaining RBAC parity across three paths instead of two indefinitely.
+
+*A backend-only signed-XML proof (script or test only, no route, no frontend button)* — rejected as insufficient evidence. The value of driving OIDC's login through an actual browser click-through (`docs/architecture/identity.md`, "What is verified") was finding three real bugs code review alone would have missed. A SAML implementation that has never been driven through Keycloak's real SSO endpoint by an actual browser makes a weaker claim than one that has.
+
+*python3-saml or pysaml2* — rejected per the signxml discussion above; noted here because both are the more common choice and a reviewer would reasonably ask why this project didn't use one of them.
+
+**Consequences:**
+
+The route pair depends on `Settings.oidc_issuer` for the expected assertion Issuer and for deriving the default IdP metadata URL — a deliberate reuse, not a coupling bug, because it is genuinely the same Keycloak realm serving both protocols (see `Settings.saml_idp_metadata_url`'s docstring).
+
+`_PendingRequestStore` is in-process memory, not shared storage — acceptable because this route pair is never `AUTH_MODE`'s dispatch target and was never going to run behind multiple backend replicas. A production SAML SP would need this hardened; that hardening is explicitly out of scope here, the same way `docs/architecture/identity.md` already documents OIDC's own local-dev-only simplifications (no refresh rotation, no back-channel logout, `start-dev` HTTP-only Keycloak).
+
+No SP metadata endpoint (`/auth/saml/metadata`) exists — the Keycloak client's ACS URL is configured directly in `infra/keycloak/realm-meridian.json` rather than discovered, which is a reasonable omission for one hardcoded IdP relationship and a real one if this ever needed to onboard a second IdP.
