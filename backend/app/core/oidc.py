@@ -145,8 +145,17 @@ class OIDCValidator:
         self._audience = settings.oidc_audience
         self._client_id = settings.oidc_client_id
         self._leeway = settings.oidc_leeway_seconds
+        # See Settings.oidc_jwks_uri — blank means derive from the issuer,
+        # set means the issuer isn't reachable from wherever this process
+        # runs (the docker-compose case: the issuer has to stay the
+        # browser-facing localhost URL for iss-claim matching, while the
+        # backend container needs the compose network's "keycloak" host to
+        # actually fetch keys).
+        jwks_uri = settings.oidc_jwks_uri.rstrip("/") or (
+            f"{self._issuer}/protocol/openid-connect/certs"
+        )
         self._jwks = jwks_cache or JWKSCache(
-            jwks_uri=f"{self._issuer}/protocol/openid-connect/certs",
+            jwks_uri=jwks_uri,
             cache_seconds=settings.oidc_jwks_cache_seconds,
         )
 

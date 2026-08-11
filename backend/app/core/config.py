@@ -64,6 +64,27 @@ class Settings(BaseSettings):
     # oidc mode should not have to invent values, and enabling it without
     # them fails loudly at startup rather than at first login.
     oidc_issuer: str = ""
+    # Overrides where the backend fetches JWKS from, independent of
+    # oidc_issuer. Blank means "derive it from the issuer" (issuer + the
+    # standard /protocol/openid-connect/certs suffix), which is correct
+    # whenever the issuer URL is reachable from wherever the backend
+    # process actually runs.
+    #
+    # It is not reachable in this docker-compose setup. oidc_issuer has to
+    # stay "http://localhost:8080/realms/meridian" because that value is
+    # baked into every token's iss claim (the browser mints tokens against
+    # localhost:8080, and validation requires an exact string match) — but
+    # "localhost" from inside the backend container resolves to the backend
+    # container itself, which has nothing listening on port 8080. The
+    # browser and the backend need to reach Keycloak through two different
+    # addresses for the same realm, and one override that only affects the
+    # server-side fetch is the fix. docker-compose.yml sets this to
+    # http://keycloak:8080/... (the compose network's service name) for the
+    # backend service specifically; a bare .env value can't express this
+    # because .env is shared by the browser-facing default and the
+    # container-only override, and DATABASE_URL and MCP_SERVER_URL are
+    # already overridden the same way for the same reason.
+    oidc_jwks_uri: str = ""
     oidc_client_id: str = "meridian-flow"
     # The confidential client's secret, used only for the code-for-token
     # exchange. Never sent to the browser.

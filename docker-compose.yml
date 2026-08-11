@@ -36,6 +36,15 @@ services:
       DATABASE_URL: postgresql+psycopg://meridian:meridian@db:5432/meridian_flow
       WORKFLOWS_DIR: /app/workflows
       MCP_SERVER_URL: http://mcp_server:8100/mcp
+      # OIDC_ISSUER (from .env) must stay the browser-facing
+      # localhost:8080 URL — it has to exactly match every token's iss
+      # claim. But "localhost" from inside this container is this
+      # container, not the host, so the backend can't fetch JWKS from
+      # that address. This is the one OIDC setting that has to differ
+      # between what the browser sees and what this container sees, same
+      # reasoning as DATABASE_URL and MCP_SERVER_URL above — see
+      # Settings.oidc_jwks_uri.
+      OIDC_JWKS_URI: http://keycloak:8080/realms/meridian/protocol/openid-connect/certs
     command: >
       sh -c "alembic upgrade head &&
              python -m app.db.seed &&

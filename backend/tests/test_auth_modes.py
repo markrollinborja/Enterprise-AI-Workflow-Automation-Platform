@@ -336,6 +336,29 @@ class TestOIDCTokenValidation:
         assert "audience" not in str(exc_info.value).lower()
 
 
+class TestOIDCJWKSURIOverride:
+    """Settings.oidc_jwks_uri exists because the docker-compose backend
+    container cannot reach Keycloak through OIDC_ISSUER — that value has to
+    stay the browser-facing localhost URL for iss-claim matching, but
+    "localhost" from inside the backend container is the backend container
+    itself. See docs/architecture/identity.md, "Two addresses for one
+    Keycloak" — found by running the real flow end to end, not by
+    inspection.
+    """
+
+    def test_blank_override_derives_the_uri_from_the_issuer(self, oidc_settings: Any) -> None:
+        validator = OIDCValidator(oidc_settings)
+        assert validator._jwks._jwks_uri == f"{ISSUER}/protocol/openid-connect/certs"  # noqa: SLF001
+
+    def test_set_override_takes_precedence_over_the_issuer(
+        self, oidc_settings: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        internal_uri = "http://keycloak:8080/realms/meridian/protocol/openid-connect/certs"
+        monkeypatch.setattr(oidc_settings, "oidc_jwks_uri", internal_uri)
+        validator = OIDCValidator(oidc_settings)
+        assert validator._jwks._jwks_uri == internal_uri  # noqa: SLF001
+
+
 class TestRoleMapping:
     @pytest.mark.parametrize(
         ("keycloak_role", "expected"),

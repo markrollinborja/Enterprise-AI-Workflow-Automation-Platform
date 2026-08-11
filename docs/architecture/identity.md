@@ -106,6 +106,27 @@ are accepted**. Accepting HS256 alongside RS256 enables algorithm confusion —
 an attacker signs a token using the *public* key as an HMAC secret, and a
 verifier that trusts the header's `alg` accepts it.
 
+### Two addresses for one Keycloak
+
+`OIDC_ISSUER` has to be `http://localhost:8080/realms/meridian` — it must
+match every token's `iss` claim exactly, and the browser mints tokens
+against `localhost:8080`. But the backend derives its JWKS fetch URL from
+that same issuer by default, and inside the backend's own container
+`localhost` means the backend container, not the host — there is nothing
+listening on port 8080 there. The browser and the backend need to reach one
+Keycloak through two different addresses.
+
+`OIDC_JWKS_URI` (`Settings.oidc_jwks_uri`) exists to break that dependency:
+when set, the backend fetches keys from it instead of deriving the URL from
+`OIDC_ISSUER`. `docker-compose.yml` sets it to
+`http://keycloak:8080/realms/meridian/protocol/openid-connect/certs` for the
+backend service — the compose network's service name, not `localhost` —
+while `OIDC_ISSUER` stays the browser-facing value everywhere. Found by
+running the actual authorization-code flow end to end and watching the
+backend return 503 `IdentityProviderUnavailableError` on a token Keycloak
+had just issued correctly: the token was fine, the container couldn't reach
+the address it was told to use.
+
 ### JWKS caching
 
 Cached for 300 seconds, because fetching per request puts Keycloak in the hot
@@ -186,16 +207,27 @@ that survives an email change upstream.
 | Role mapping and precedence | **Tested** |
 | User resolution, linking, deactivation | **Tested** |
 | RBAC parity between modes | **Tested** across all six roles |
-| Keycloak container boots and imports the realm | **Not verified** |
-| Browser authorization-code flow end to end | **Not verified** |
+| Keycloak container boots and imports the realm | **Verified** — realm, all 6 users, all 6 realm roles confirmed in the admin console |
+| Browser authorization-code + PKCE flow end to end | **Verified** — real login as ava.thompson@cordant.io through Keycloak's hosted form, real RS256 token, `GET /auth/me` returns `role: "hr"`, `GET /employees` returns 200 |
 
-The last two need Docker and a browser. They are listed in the phase handover
-as manual steps and are not claimed as working until run and recorded.
+Verified by hand-driving the actual protocol (PKCE challenge, redirect to
+Keycloak, real password login, code exchange, bearer call against the
+running backend) through a browser — not by inspection. That process
+surfaced two real bugs before this row could turn green: the frontend has
+no OIDC UI yet (tracked separately — see "Known simplifications" below),
+and the backend could not reach Keycloak's JWKS endpoint over the compose
+network until `OIDC_JWKS_URI` was added (see "Two addresses for one
+Keycloak" above).
 
 ---
 
 ## Known simplifications
 
+- The frontend has no OIDC UI yet — no redirect-to-Keycloak, no
+  `/auth/callback` route. Phase 3 scoped the backend (validation, RBAC
+  parity, SCIM); the browser-based flow above was driven by hand, outside
+  the app's UI, to verify the backend and Keycloak side independently of
+  that gap. Building the frontend piece is tracked as its own follow-up.
 - `start-dev` mode, in-memory H2, HTTP only. Not production Keycloak.
 - The client secret is committed in the realm file and `.env.example`. It is
   a local development realm with fictional users, and the file is only useful
