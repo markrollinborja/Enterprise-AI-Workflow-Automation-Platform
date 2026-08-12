@@ -242,6 +242,59 @@ services:
     ports:
       - "8080:8080"
 
+  prometheus:
+    # V2 Module 7 part 1 (ADR-0022). Scrapes backend, worker and mcp_server's
+    # /metrics endpoints on the compose network -- see
+    # infra/observability/prometheus.yml for the three targets.
+    image: prom/prometheus:v2.55.1
+    profiles: ["observability"]
+    restart: unless-stopped
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+      - worker
+      - mcp_server
+
+  grafana:
+    # Dashboards and the Prometheus datasource are provisioned as code (see
+    # infra/observability/grafana/provisioning/) rather than built by hand
+    # in the UI -- someone running `docker compose --profile observability
+    # up` should land on a working dashboard, not an empty Grafana asking
+    # to be configured.
+    image: grafana/grafana:11.3.1
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      # Local demo credentials only -- same category as Keycloak's bootstrap
+      # admin above. Never used for anything internet-reachable.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Skips Grafana's first-login "change your password" interstitial so
+      # a demo screen-share goes straight to the dashboard.
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      # One mount, not two. The dashboard JSON lives inside
+      # provisioning/dashboards/json/ on the host (see dashboards.yml's
+      # `path`) rather than as a second bind mount nested inside this one
+      # -- Docker Desktop on Windows/WSL2 can't create a mountpoint for a
+      # second bind mount *inside* a directory this first mount already
+      # made read-only ("read-only file system" at container create,
+      # found the hard way running this for real). A single mount avoids
+      # the nesting entirely.
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
   n8n_data:
+  prometheus_data:
+  grafana_data:

@@ -47,6 +47,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.metrics import mcp_tool_call_duration_seconds
 from app.models.enums import MCPExecutionStatus, MCPToolCaller
 from app.repositories import mcp_tool_execution_repo
 
@@ -118,6 +119,9 @@ def call_tool(
             duration_ms=duration_ms,
             error_message=description,
         )
+        mcp_tool_call_duration_seconds.labels(
+            tool_name=tool_name, caller=caller.value, status="failed"
+        ).observe(duration_ms / 1000.0)
         raise MCPToolError(description) from exc
 
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -134,6 +138,9 @@ def call_tool(
         duration_ms=duration_ms,
         error_message=None,
     )
+    mcp_tool_call_duration_seconds.labels(
+        tool_name=tool_name, caller=caller.value, status="completed"
+    ).observe(duration_ms / 1000.0)
     return result
 
 

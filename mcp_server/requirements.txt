@@ -11,6 +11,13 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 email-validator==2.2.0
 psycopg[binary]==3.2.3
+# Observability (V2 Module 7 part 1, ADR-0022). Baseline process metrics
+# only (see server.py's /metrics route) -- deliberately no per-tool
+# counters here, since backend/app/services/integrations/mcp_client.py's
+# mcp_tool_call_duration_seconds already records call latency and
+# success/failure from the calling side, with richer labels (caller,
+# workflow context) than this process could attach on its own.
+prometheus-client==0.26.0
 # Real-mode Google Calendar only (see app/tools/calendar.py) — imported
 # lazily inside _real_schedule_calendar_event, not at module load time, so
 # the (much more common) mock-mode path never pays their import cost and a

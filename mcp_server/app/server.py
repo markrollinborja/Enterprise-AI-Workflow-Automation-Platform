@@ -17,6 +17,9 @@ live there, not in the wrapper.
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.requests import Request
+from starlette.responses import Response
 
 from app.schemas import (
     CreateJiraTaskInput,
@@ -42,6 +45,19 @@ from app.tools.slack import execute_send_slack_notification
 # one doesn't — see ADR-0012's note on this SDK's version-to-version
 # drift). Port 8100 matches docker-compose.yml and Settings.mcp_server_url.
 mcp = FastMCP("Meridian Flow MCP Server", host="0.0.0.0", port=8100)
+
+
+@mcp.custom_route("/metrics", methods=["GET"])
+async def metrics(_request: Request) -> Response:
+    """Prometheus scrape endpoint (V2 Module 7, ADR-0022). Baseline process
+    metrics from the default global registry only -- see requirements.txt
+    for why this process doesn't also duplicate per-tool call metrics that
+    backend/ already records from the calling side. Mounted via FastMCP's
+    custom_route alongside the /mcp protocol endpoint on the same ASGI app
+    (confirmed via inspect.getsource against the installed mcp==1.9.4 SDK
+    that this decorator exists and takes this shape -- same
+    version-drift caution as mcp_client.py's streamablehttp_client note)."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @mcp.tool()

@@ -1,0 +1,19 @@
+# Points Grafana at the dashboard JSON checked into this repo
+# (./json/meridian-flow.json, alongside this file) so the dashboard is
+# version-controlled like everything else in infra/, not a one-off built
+# by hand in the UI and lost the moment the grafana_data volume is
+# removed. Lives inside provisioning/ itself (not a sibling directory)
+# so docker-compose.yml only needs one bind mount for the whole
+# provisioning tree -- see that file's grafana service for why a second,
+# nested mount doesn't work on Docker Desktop.
+apiVersion: 1
+
+providers:
+  - name: meridian-flow
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

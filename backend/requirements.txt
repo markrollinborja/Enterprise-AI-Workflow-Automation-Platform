@@ -38,3 +38,10 @@ anyio==4.7.0
 # (encrypted assertions, SLO, metadata autoconfiguration).
 signxml==5.1.0
 lxml==6.1.1
+# Observability (V2 Module 7 part 1, ADR-0022). Exposition-format metrics
+# only -- deliberately not prometheus-fastapi-instrumentator, which pulled
+# in starlette>=1.0 and broke this project's fastapi==0.115.6 pin
+# (starlette<0.42.0,>=0.40.0) the moment it was installed in a clean venv.
+# A hand-rolled HTTP-timing middleware (app/main.py, same shape as the
+# existing correlation-ID middleware) avoids the dependency entirely.
+prometheus-client==0.26.0

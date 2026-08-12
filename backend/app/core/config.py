@@ -165,6 +165,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480  # 8 hours
 
+    # Metrics (V2 Module 7, ADR-0022). Only the worker needs its own port:
+    # the API and mcp_server processes already have an HTTP server to hang
+    # /metrics off of (see api/routes/metrics.py and mcp_server/app/server.py's
+    # custom_route), but runner.py's poll loop has no HTTP server at all, so
+    # prometheus_client.start_http_server() has to open one just for this.
+    # 9100 is the node-exporter-family convention for "a process's own
+    # metrics port" and doesn't collide with anything else in
+    # docker-compose.yml.
+    metrics_port: int = 9100
+
     # AI — see docs/architecture/mcp-architecture.md
     openai_api_key: str = ""
     # gpt-4o-mini, not gpt-4.1-nano: observed in a real-mode run that nano

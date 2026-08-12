@@ -1,4 +1,5 @@
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
@@ -16,6 +17,7 @@ from app.api.routes import (
     health,
     inbound_events,
     integrations,
+    metrics,
     notifications,
     saml,
     scim,
@@ -33,6 +35,7 @@ from app.core.correlation import (
 )
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging
+from app.core.metrics import http_request_duration_seconds, http_requests_total
 
 configure_logging()
 settings = get_settings()
@@ -85,6 +88,41 @@ async def correlation_id_middleware(
     return response
 
 
+@app.middleware("http")
+async def metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Records http_requests_total / http_request_duration_seconds (V2
+    Module 7) for every request, including ones that raise.
+
+    Labels on the route *template* (`/employees/{employee_id}`), not the
+    raw path — read from `request.scope["route"]` after `call_next`
+    resolves it. Using the raw path instead would give every distinct
+    employee id its own time series, and Prometheus has no way to garbage
+    -collect a label value once it exists: that's the textbook cardinality
+    explosion this labeling choice exists to avoid. A request that never
+    matched a route at all (a 404, or someone probing for `/wp-admin`)
+    falls back to the literal string "unmatched" rather than the raw path,
+    for the same reason.
+    """
+    started = time.monotonic()
+    response: Response | None = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        duration = time.monotonic() - started
+        route = request.scope.get("route")
+        route_template = route.path if route is not None else "unmatched"
+        status_code = response.status_code if response is not None else 500
+        http_requests_total.labels(
+            method=request.method, route=route_template, status_code=str(status_code)
+        ).inc()
+        http_request_duration_seconds.labels(
+            method=request.method, route=route_template
+        ).observe(duration)
+
+
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     """Single translation point from domain errors to HTTP responses — see
@@ -121,6 +159,7 @@ app.include_router(integrations.router)
 app.include_router(inbound_events.router)
 app.include_router(scim.router)
 app.include_router(saml.router)
+app.include_router(metrics.router)
 
 
 @app.get("/")

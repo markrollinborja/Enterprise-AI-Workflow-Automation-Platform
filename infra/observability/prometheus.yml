@@ -1,0 +1,21 @@
+# Scrape config for the observability profile (V2 Module 7, ADR-0022).
+# Three targets, one per process that exposes /metrics -- see each
+# service's own comment in docker-compose.yml for why the worker needs a
+# dedicated port (9100) while backend and mcp_server ride their existing
+# HTTP servers.
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: backend
+    static_configs:
+      - targets: ["backend:8000"]
+
+  - job_name: worker
+    static_configs:
+      - targets: ["worker:9100"]
+
+  - job_name: mcp_server
+    static_configs:
+      - targets: ["mcp_server:8100"]

@@ -16,6 +16,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
+from app.core.metrics import approval_decisions_total, approval_wait_seconds
 from app.models.approval import ApprovalRequest
 from app.models.enums import ApprovalRequestStatus, UserRole
 from app.models.user import User
@@ -98,7 +99,7 @@ def decide(
     decision_status = (
         ApprovalRequestStatus.APPROVED if decision == "approved" else ApprovalRequestStatus.REJECTED
     )
-    approval_decision_repo.create(
+    decision_row = approval_decision_repo.create(
         db,
         approval_request_id=approval_request.id,
         decided_by_user_id=current_user.id,
@@ -108,6 +109,19 @@ def decide(
     approval_request.status = decision_status
     db.add(approval_request)
     db.commit()
+
+    # Both timestamps are DB-generated columns on rows created moments
+    # apart in this same call, so subtracting them directly mirrors
+    # services/dashboard/service.py's existing
+    # (instance.completed_at - instance.started_at) pattern rather than
+    # introducing a fresh datetime.now(UTC) value that would need its own
+    # tz-awareness reasoning (V2 Module 7, ADR-0022).
+    approval_wait_seconds.labels(approver_role=approval_request.approver_role.value).observe(
+        (decision_row.decided_at - approval_request.created_at).total_seconds()
+    )
+    approval_decisions_total.labels(
+        approver_role=approval_request.approver_role.value, decision=decision
+    ).inc()
 
     # Clears the "Approval needed" in-app notification that put this in the
     # deciding user's queue — without this, acting on the approval here

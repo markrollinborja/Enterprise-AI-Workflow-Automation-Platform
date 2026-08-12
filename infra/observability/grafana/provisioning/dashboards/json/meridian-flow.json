@@ -1,0 +1,121 @@
+{
+  "title": "Meridian Flow - Platform Overview",
+  "uid": "meridian-flow-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["meridian-flow", "v2-module-7"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP request rate by route",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[5m])) by (route, status_code)",
+          "legendFormat": "{{route}} [{{status_code}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP request duration, p95 by route",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Workflow instances finished, by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "description": "completed / failed / rejected rates -- the three terminal states a workflow instance can reach (see app/services/workflows/state_machine.py). A rising failed or rejected line relative to completed is the signal this panel exists to surface.",
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_instances_finished_total[5m])) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(workflow_instances_started_total[5m])) by (workflow_key)",
+          "legendFormat": "started: {{workflow_key}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Approval decision rate, by role and outcome",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(approval_decisions_total[5m])) by (approver_role, decision)",
+          "legendFormat": "{{approver_role}} - {{decision}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Approval wait time, p50 / p95 by role",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "description": "Time between an ApprovalRequest being created and a human deciding it. Bucketed out to 24h (see app/core/metrics.py) -- unlike HTTP latency, a slow approval is measured in hours, not milliseconds.",
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(approval_wait_seconds_bucket[30m])) by (le, approver_role))",
+          "legendFormat": "p50 {{approver_role}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(approval_wait_seconds_bucket[30m])) by (le, approver_role))",
+          "legendFormat": "p95 {{approver_role}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "MCP tool call duration, p95 by tool",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(mcp_tool_call_duration_seconds_bucket[5m])) by (le, tool_name))",
+          "legendFormat": "{{tool_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "MCP tool call error rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "description": "Failed / total call rate per tool, from mcp_tool_call_duration_seconds_count{status=\"failed\"} vs. the same series unfiltered -- the audit-trail metric backing MCPToolExecution rows (Principle 4).",
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(rate(mcp_tool_call_duration_seconds_count{status=\"failed\"}[5m])) by (tool_name) / sum(rate(mcp_tool_call_duration_seconds_count[5m])) by (tool_name)",
+          "legendFormat": "{{tool_name}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

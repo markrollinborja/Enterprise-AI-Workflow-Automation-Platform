@@ -11,6 +11,9 @@ start_workflow/resume_workflow_step.
 import logging
 import time
 
+from prometheus_client import start_http_server
+
+from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal
 from app.repositories import workflow_instance_repo
@@ -59,6 +62,14 @@ def poll_once() -> int:
 
 def run_forever() -> None:
     configure_logging()
+    # Started once, before the loop -- this process has no other HTTP
+    # server to hang /metrics off of (contrast api/routes/metrics.py, which
+    # rides the API's existing FastAPI app). Not wrapped in try/except: a
+    # port bind failure here means the container is misconfigured
+    # (METRICS_PORT collision) and should fail loudly at startup, the same
+    # way validate_auth_configuration does in main.py, rather than run
+    # silently unmonitored.
+    start_http_server(get_settings().metrics_port)
     logger.info("workflow worker started, polling every %ss", POLL_INTERVAL_SECONDS)
     while True:
         poll_once()

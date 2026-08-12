@@ -22,6 +22,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.metrics import workflow_instances_finished_total, workflow_instances_started_total
 from app.db.session import engine
 from app.models.enums import (
     FailureBehavior,
@@ -117,6 +118,10 @@ def start_workflow(
     )
     transition_instance(instance, InstanceStatus.RUNNING)
     db.commit()
+    # Only reachable past the dedup-hit early return above, so this never
+    # double-counts a resubmitted event that resolved to an existing
+    # instance (V2 Module 7, ADR-0022).
+    workflow_instances_started_total.labels(workflow_key=workflow_key).inc()
 
     for step_def in definition.steps:
         workflow_step_repo.create(
@@ -362,6 +367,9 @@ def _advance_workflow_locked(db: Session, instance: WorkflowInstance) -> Workflo
     instance.completed_at = _utcnow()
     instance.current_step_key = None
     db.commit()
+    workflow_instances_finished_total.labels(
+        workflow_key=instance.workflow_definition.key, status="completed"
+    ).inc()
     _notify_submitter(
         db,
         instance,
@@ -547,6 +555,9 @@ def _apply_step_result(
     if step_def.failure_behavior != FailureBehavior.CONTINUE:
         transition_instance(instance, InstanceStatus.FAILED)
         instance.completed_at = _utcnow()
+        workflow_instances_finished_total.labels(
+            workflow_key=instance.workflow_definition.key, status="failed"
+        ).inc()
     db.commit()
 
 
@@ -585,6 +596,9 @@ def resume_workflow_step(
     transition_instance(instance, InstanceStatus.REJECTED)
     instance.completed_at = _utcnow()
     db.commit()
+    workflow_instances_finished_total.labels(
+        workflow_key=instance.workflow_definition.key, status="rejected"
+    ).inc()
     _notify_submitter(
         db,
         instance,

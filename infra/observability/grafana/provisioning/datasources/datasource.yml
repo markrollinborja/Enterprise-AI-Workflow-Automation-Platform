@@ -1,0 +1,14 @@
+# Provisioned as code, not clicked together in the UI (V2 Module 7,
+# ADR-0022) -- the same reasoning as the Keycloak realm import: a
+# reviewer who runs `docker compose --profile observability up` should see
+# a working Grafana, not an empty shell that needs manual setup steps
+# nobody wrote down.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
